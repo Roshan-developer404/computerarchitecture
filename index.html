@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08111d" />
+  <meta name="description" content="An interactive 3D laptop architecture simulator for learning how keyboard input, CPU, memory, GPU, and laptop components work." />
+  <title>Inside the Laptop — 3D Hardware Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <style>
+    :root {
+      --bg: #08111d;
+      --panel: rgba(12, 23, 37, .94);
+      --panel-2: rgba(17, 31, 49, .92);
+      --line: rgba(151, 180, 208, .15);
+      --text: #eef5fb;
+      --muted: #91a5b9;
+      --muted-2: #668096;
+      --cyan: #48d8e8;
+      --blue: #78a9ff;
+      --green: #51d6a1;
+      --amber: #f6bd60;
+      --pink: #ef8db5;
+      --shadow: 0 18px 60px rgba(0,0,0,.32);
+      --mono: "DM Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+      --sans: "Manrope", Inter, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { color: var(--text); background: radial-gradient(circle at 52% 34%, #15283a 0, #0a1725 44%, #060d16 100%); font-family: var(--sans); overflow: hidden; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    #app { height: 100%; min-height: 620px; display: flex; flex-direction: column; }
+    .topbar { min-height: 66px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding: 10px 18px; border-bottom:1px solid var(--line); background:rgba(6,14,23,.82); backdrop-filter:blur(16px); z-index:20; }
+    .brand { display:flex; align-items:center; gap:11px; min-width:250px; }
+    .brand-mark { width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,#2dd4bf,#3b82f6);box-shadow:0 8px 26px rgba(45,212,191,.2);color:#061522;font-size:20px;font-weight:900; }
+    .brand-title { font-size:14px; font-weight:800; letter-spacing:.08em; }
+    .brand-sub { margin-top:2px; color:var(--muted);font:10px var(--mono); letter-spacing:.1em; }
+    .top-center { display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center; }
+    .status-pill { display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(18,35,52,.68);font-size:11px;color:#c6d6e5;white-space:nowrap; }
+    .dot { width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green); }
+    .dot.warn { background:var(--amber);box-shadow:0 0 12px var(--amber); }
+    .top-actions { display:flex;align-items:center;gap:7px; }
+    .btn { border:1px solid var(--line); color:#dbe8f2; background:rgba(24,42,61,.82); border-radius:9px; padding:8px 11px; font-size:11px;font-weight:700;transition:.18s ease; }
+    .btn:hover { border-color:rgba(72,216,232,.55);background:rgba(28,59,77,.95);transform:translateY(-1px); }
+    .btn.primary { color:#05212a;background:linear-gradient(135deg,#6ce2dc,#67baff);border:0; }
+    .btn.active { border-color:rgba(72,216,232,.65);color:var(--cyan);background:rgba(72,216,232,.12); }
+    .btn.danger { color:#ffb1c3; }
+    .workspace { flex:1; min-height:0; display:grid; grid-template-columns:285px minmax(360px,1fr) 305px; grid-template-rows:minmax(0,1fr) 174px; gap:10px; padding:10px; }
+    .panel { min-height:0; overflow:hidden; border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:var(--shadow);backdrop-filter:blur(15px); }
+    .panel-head { display:flex;align-items:center;justify-content:space-between;padding:13px 14px 10px;border-bottom:1px solid var(--line); }
+    .eyebrow { color:var(--muted-2);font:10px var(--mono);letter-spacing:.15em;text-transform:uppercase; }
+    .panel-title { font-size:13px;font-weight:800;letter-spacing:.01em; }
+    .panel-body { padding:12px 13px;overflow:auto;max-height:calc(100% - 48px);scrollbar-width:thin;scrollbar-color:#294256 transparent; }
+    .left-panel { grid-column:1;grid-row:1; }
+    .stage-panel { grid-column:2;grid-row:1;position:relative;overflow:hidden;border:1px solid rgba(132,173,205,.13);border-radius:15px;background:radial-gradient(ellipse at 50% 42%,rgba(41,78,102,.2),rgba(8,17,29,.2) 60%); }
+    #scene { position:absolute;inset:0; }
+    #scene canvas { display:block;width:100%;height:100%;outline:none; }
+    .scene-top { position:absolute;left:14px;top:13px;z-index:5;pointer-events:none; }
+    .scene-kicker { color:#a9c1d5;font:10px var(--mono);letter-spacing:.16em; }
+    .scene-caption { color:#e4eef7;font-size:12px;font-weight:800;margin-top:5px;text-shadow:0 2px 12px #07111c; }
+    .scene-controls { position:absolute;top:12px;right:12px;z-index:6;display:flex;gap:5px; }
+    .scene-controls .btn { padding:7px 9px;background:rgba(8,18,29,.8);font-size:10px; }
+    .scene-bottom { position:absolute;bottom:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;align-items:flex-end;pointer-events:none;z-index:5; }
+    .legend {display:flex;gap:6px;flex-wrap:wrap;}
+    .legend-item { padding:5px 8px;border-radius:7px;background:rgba(5,14,23,.75);border:1px solid rgba(151,180,208,.13);color:#b6c9d9;font:9px var(--mono); }
+    .legend-dot { display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle; }
+    .scene-hint { color:#9eb2c5;background:rgba(5,14,23,.7);padding:6px 8px;border:1px solid var(--line);border-radius:7px;font:9px var(--mono);white-space:nowrap; }
+    .right-panel { grid-column:3;grid-row:1; }
+    .flow-panel { grid-column:1 / 4;grid-row:2;display:flex;flex-direction:column; }
+    .flow-head { padding:10px 14px 7px;display:flex;align-items:center;justify-content:space-between;gap:10px; }
+    .flow-track { display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;padding:0 12px 9px; }
+    .flow-node { min-width:0;text-align:left;position:relative;padding:8px 9px;border:1px solid var(--line);border-radius:10px;background:rgba(18,34,51,.72);color:#b8c8d7;transition:.18s; }
+    .flow-node:not(:last-child)::after { content:"";position:absolute;right:-8px;top:50%;height:1px;width:8px;background:#38536a; }
+    .flow-node .num { font:9px var(--mono);color:var(--muted-2); }
+    .flow-node .name { display:block;margin-top:4px;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .flow-node .sub { display:block;margin-top:2px;color:var(--muted);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .flow-node.active { border-color:rgba(72,216,232,.7);background:rgba(72,216,232,.12);color:#e8fbff;box-shadow:0 0 18px rgba(72,216,232,.1); }
+    .flow-node.done { border-color:rgba(81,214,161,.38); }
+    .flow-node.done .num { color:var(--green); }
+    .flow-detail { display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin:0 12px 10px;padding:8px 11px;border-radius:9px;background:rgba(5,14,23,.62);border:1px solid rgba(151,180,208,.1);min-height:43px; }
+    .flow-detail strong { display:block;font-size:10px;color:#eaf5fc; }
+    .flow-detail p { margin:3px 0 0;color:var(--muted);font-size:10px;line-height:1.35; }
+    .flow-state { font:10px var(--mono);color:var(--cyan);text-align:right;white-space:nowrap; }
+    .section { margin-bottom:14px; }
+    .section-label { margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;color:#b5c7d7;font:10px var(--mono);letter-spacing:.08em;text-transform:uppercase; }
+    .capture-card { padding:11px;border-radius:11px;background:linear-gradient(145deg,rgba(29,63,79,.55),rgba(14,30,46,.72));border:1px solid rgba(72,216,232,.22); }
+    .capture-row { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+    .capture-label { display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800; }
+    .capture-desc { margin:7px 0 10px;color:var(--muted);font-size:10px;line-height:1.5; }
+    .key-preview { min-height:62px;display:flex;align-items:center;gap:11px; }
+    .big-key { width:48px;height:48px;display:grid;place-items:center;border-radius:10px;border:1px solid rgba(107,203,222,.52);background:linear-gradient(145deg,#263f53,#142636);box-shadow:inset 0 -4px 0 rgba(0,0,0,.28),0 7px 15px rgba(0,0,0,.2);font:22px var(--mono);color:#e3fbff; }
+    .key-meta { min-width:0; }
+    .key-char { font-size:13px;font-weight:800; }
+    .key-code { margin-top:3px;color:var(--muted);font:9px var(--mono);overflow-wrap:anywhere; }
+    .data-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:9px; }
+    .data-cell { padding:7px 8px;border-radius:8px;background:rgba(5,13,22,.65);border:1px solid rgba(151,180,208,.1);min-width:0; }
+    .data-cell label { display:block;color:var(--muted-2);font:9px var(--mono);text-transform:uppercase; }
+    .data-cell b { display:block;margin-top:4px;color:#d6e9f7;font:11px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .mode-row {display:flex;gap:5px;padding:4px;background:rgba(5,14,23,.8);border:1px solid var(--line);border-radius:9px;}
+    .mode-row button {flex:1;border:0;background:transparent;color:var(--muted);padding:7px 5px;border-radius:6px;font-size:10px;font-weight:800;}
+    .mode-row button.active {background:rgba(72,216,232,.16);color:#baf8ff;}
+    .output-box { min-height:72px;padding:10px;border-radius:9px;border:1px solid rgba(151,180,208,.14);background:#06101a;color:#9fe6d0;font:11px/1.7 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere; }
+    .small-muted { color:var(--muted-2);font-size:9px;line-height:1.5; }
+    .kbd-hint { margin-top:7px;color:#9fb2c2;font-size:9px;line-height:1.45; }
+    .advanced-box { display:none; }
+    body.advanced .advanced-box { display:block; }
+    .bit-row {display:flex;gap:3px;margin-top:6px;}
+    .bit {flex:1;text-align:center;padding:5px 0;border-radius:4px;background:#11263a;color:#7892a8;font:9px var(--mono);}
+    .bit.on {background:rgba(72,216,232,.2);color:#9ff4fb;border:1px solid rgba(72,216,232,.28);}
+    .component-list { display:grid;grid-template-columns:1fr 1fr;gap:6px; }
+    .component-btn { min-width:0;text-align:left;padding:8px;border:1px solid rgba(151,180,208,.13);background:rgba(8,19,31,.64);border-radius:9px;color:#c6d7e6;transition:.18s; }
+    .component-btn:hover,.component-btn.selected {border-color:rgba(72,216,232,.6);background:rgba(72,216,232,.1);}
+    .component-icon { font-size:15px; }
+    .component-name { display:block;margin-top:5px;font-size:9px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .component-type { display:block;margin-top:2px;color:var(--muted-2);font:8px var(--mono); }
+    .detail-hero { padding:11px;border-radius:10px;background:linear-gradient(135deg,rgba(40,78,101,.52),rgba(12,27,42,.7));border:1px solid rgba(120,169,255,.2); }
+    .detail-hero h3 { margin:5px 0 4px;font-size:15px; }
+    .detail-hero p {margin:0;color:#acc0d0;font-size:10px;line-height:1.5;}
+    .detail-block {margin-top:11px;}
+    .detail-block h4 {margin:0 0 5px;color:#a8bdce;font:9px var(--mono);letter-spacing:.12em;text-transform:uppercase;}
+    .detail-block p {margin:0;color:#c6d5e2;font-size:10px;line-height:1.6;}
+    .connection-list {display:flex;flex-wrap:wrap;gap:5px;}
+    .connection {padding:5px 7px;border-radius:6px;background:rgba(72,216,232,.08);border:1px solid rgba(72,216,232,.16);color:#9ddce6;font:9px var(--mono);}
+    .telemetry {padding:8px;border-radius:8px;background:rgba(5,13,22,.66);border:1px solid rgba(151,180,208,.12);font:9px/1.8 var(--mono);color:#94adc1;}
+    .telemetry b {color:#d7e9f6;font-weight:500;}
+    .advanced-note {padding:8px;border-left:2px solid var(--amber);background:rgba(246,189,96,.06);color:#cdbf9f;font-size:9px;line-height:1.5;}
+    .toast {position:fixed;bottom:14px;left:50%;transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:50;padding:9px 12px;border-radius:8px;border:1px solid rgba(72,216,232,.35);background:#0b1b2a;color:#d7f8ff;font:10px var(--mono);transition:.22s;}
+    .toast.show {opacity:1;transform:translate(-50%,0);}
+    .modal-backdrop {position:fixed;inset:0;display:none;place-items:center;background:rgba(2,7,13,.75);z-index:100;padding:18px;}
+    .modal-backdrop.open {display:grid;}
+    .modal {max-width:650px;width:100%;max-height:85vh;overflow:auto;padding:20px;border:1px solid var(--line);border-radius:16px;background:#0d1c2b;box-shadow:var(--shadow);}
+    .modal h2 {margin:0 0 8px;font-size:19px;}
+    .modal p,.modal li {color:#b5c7d7;font-size:12px;line-height:1.65;}
+    .modal code {color:#91e9ed;font-family:var(--mono);}
+    .modal-close {float:right;}
+    .footer-note {color:var(--muted-2);font-size:9px;line-height:1.5;margin-top:10px;}
+
+    [hidden] { display:none !important; }
+    .track-filters {display:flex;gap:5px;margin:7px 0 8px;}
+    .track-filter {flex:1;padding:6px 5px;border:1px solid rgba(151,180,208,.15);border-radius:7px;background:rgba(8,19,31,.72);color:#9db2c5;font:9px var(--mono);}
+    .track-filter:hover,.track-filter.active {color:#9ff4fb;border-color:rgba(72,216,232,.55);background:rgba(72,216,232,.12);}
+    .fallback-hardware {position:absolute;inset:0;display:grid;place-items:center;overflow:hidden;padding:30px 18px 54px;background:radial-gradient(ellipse at 50% 45%,rgba(35,77,102,.28),rgba(7,17,28,.12) 70%);}
+    .fallback-art {position:relative;width:min(720px,96%);height:min(470px,88%);min-height:300px;perspective:1000px;}
+    .fb-screen-shell {position:absolute;left:22%;top:1%;width:56%;height:39%;padding:10px;border:3px solid #8297a8;border-radius:13px;background:linear-gradient(145deg,#253d50,#101d2a);box-shadow:0 18px 46px rgba(0,0,0,.45);transform:rotateY(-7deg) rotateX(2deg);}
+    .fb-screen-inner {height:100%;padding:12px 15px;border:1px solid rgba(72,216,232,.34);border-radius:5px;background:linear-gradient(145deg,#061825,#102a3b);overflow:hidden;}
+    .fb-screen-top {display:flex;justify-content:space-between;gap:8px;color:#6ee8e4;font:9px var(--mono);letter-spacing:.08em;}
+    .fb-screen-top span:last-child {color:#91a5b9;font-size:8px;}
+    .fb-screen-label {margin-top:13px;color:#668ca5;font:9px var(--mono);letter-spacing:.12em;}
+    .fb-screen-output {margin-top:8px;color:#d9f8ff;font:600 clamp(13px,2vw,21px) var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:58px;overflow:hidden;}
+    .fb-screen-cursor {width:7px;height:15px;margin-top:4px;background:#61dce3;box-shadow:0 0 12px #61dce3;animation:fbBlink 1s steps(2,end) infinite;}
+    @keyframes fbBlink {50%{opacity:.1;}}
+    .fb-hinge {position:absolute;top:38%;left:21%;width:58%;height:9px;border-radius:99px;background:linear-gradient(90deg,#506779,#b0c2ce,#506779);box-shadow:0 4px 10px #0008;}
+    .fb-base {position:absolute;left:3%;top:43%;width:94%;height:51%;padding:13px 17px 10px;border:2px solid #718b9d;border-radius:12px 12px 22px 22px;background:linear-gradient(145deg,#526b7c,#1b2c3b 55%,#304658);box-shadow:0 28px 46px rgba(0,0,0,.46);transform:rotateX(50deg) rotateZ(-7deg);transform-origin:top center;}
+    .fb-board {position:absolute;top:9%;left:10%;width:80%;height:57%;border:1px solid rgba(70,207,181,.4);border-radius:8px;background:linear-gradient(145deg,#123e40,#0c2934);box-shadow:inset 0 0 25px rgba(44,210,180,.12);}
+    .fb-chip {position:absolute;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:62px;min-height:42px;padding:4px 6px;border:1px solid rgba(124,213,222,.35);border-radius:6px;background:linear-gradient(145deg,#263d50,#0a1c2a);color:#e5f9ff;box-shadow:0 4px 10px rgba(0,0,0,.3);transition:.18s;}
+    .fb-chip b {font:800 11px var(--mono);color:#71e4e5;}.fb-chip small {font:7px var(--mono);color:#9fb7c9;text-align:center;}
+    .fb-chip:hover,.fb-chip.active {border-color:#63eff1;box-shadow:0 0 20px rgba(72,216,232,.35);transform:translateY(-2px);}
+    .fb-ec {left:5%;top:13%;}.fb-host {left:29%;top:13%;}.fb-cpu {left:49%;top:11%;min-width:100px;min-height:52px;border-color:#d28bad;}.fb-gpu {right:5%;top:13%;}.fb-ram {left:19%;bottom:12%;}.fb-ssd {right:19%;bottom:12%;}.fb-power {left:3%;bottom:12%;}.fb-cooling {right:3%;bottom:12%;}
+    .fb-trace {position:absolute;z-index:1;height:2px;background:#48d8e8;opacity:.5;box-shadow:0 0 8px currentColor;}.fb-trace-one {left:18%;top:39%;width:65%;}.fb-trace-two {left:38%;top:20%;width:2px;height:58%;}.fb-trace-three {left:16%;top:72%;width:68%;background:#51d6a1;}
+    .fb-keyboard {position:absolute;left:10%;right:10%;bottom:5%;height:29%;display:flex;flex-direction:column;justify-content:space-around;gap:4px;padding:7px;border:1px solid rgba(173,199,216,.36);border-radius:6px;background:linear-gradient(145deg,#1a2c3c,#101c29);}
+    .fb-key-row {display:flex;justify-content:center;gap:4px;flex:1;}.fb-key-row i {display:grid;place-items:center;flex:1;max-width:48px;border:1px solid rgba(151,180,208,.23);border-radius:3px;background:linear-gradient(145deg,#293d4e,#101e2a);color:#b9cbd9;font:8px var(--mono);font-style:normal;}
+    .fb-trackpad {position:absolute;left:43%;bottom:-2%;width:14%;height:8%;border:1px solid rgba(195,218,231,.35);border-radius:4px;background:rgba(130,158,177,.14);}
+    .fb-signal {position:absolute;z-index:5;left:11%;top:71%;width:13px;height:13px;border-radius:50%;background:#f6bd60;box-shadow:0 0 0 5px rgba(246,189,96,.12),0 0 18px #f6bd60;transform:translate(-50%,-50%);transition:left .23s ease,top .23s ease;pointer-events:none;}
+    .fb-fallback-note {display:none;}
+    .fb-fallback-note b {color:#f6bd60;font-weight:500;}
+    @media (max-width:700px){.fallback-hardware{min-height:430px;padding-top:52px}.fallback-art{height:350px}.fb-screen-shell{left:14%;width:72%;}.fb-base{left:0;width:100%;}.fb-chip{min-width:48px;}.fb-chip small{font-size:6px;}.fb-cpu{min-width:76px;}}
+
+    @media (max-width: 1120px) {
+      .workspace {grid-template-columns:250px minmax(300px,1fr);grid-template-rows:minmax(0,1fr) 174px auto;}
+      .left-panel {grid-column:1;grid-row:1;}
+      .stage-panel {grid-column:2;grid-row:1;}
+      .right-panel {grid-column:1 / 3;grid-row:3;max-height:320px;}
+      .flow-panel {grid-column:1 / 3;grid-row:2;}
+      .right-panel .panel-body {max-height:none;}
+    }
+    @media (max-width: 700px) {
+      body {overflow:auto;}
+      #app {height:auto;min-height:100%;}
+      .topbar {flex-wrap:wrap;padding:10px 12px;}
+      .brand {min-width:0;}
+      .top-center {order:3;width:100%;justify-content:flex-start;}
+      .top-actions {margin-left:auto;}
+      .workspace {display:flex;flex-direction:column;padding:8px;gap:8px;}
+      .left-panel,.right-panel {max-height:none;min-height:250px;}
+      .stage-panel {height:430px;min-height:430px;order:1;}
+      .left-panel {order:2;}
+      .right-panel {order:3;}
+      .flow-panel {order:4;min-height:215px;overflow:visible;}
+      .panel-body {max-height:none;}
+      .flow-track {grid-template-columns:repeat(4,minmax(0,1fr));}
+      .flow-node:not(:last-child)::after {display:none;}
+      .flow-detail {grid-template-columns:1fr;}
+      .flow-state {text-align:left;}
+      .scene-hint {display:none;}
+      .scene-controls {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-width:148px;justify-content:end;}
+      .scene-controls .btn {white-space:nowrap;padding:5px 6px;font-size:8px;}
+      #slowMotionBtn {font-size:0;}
+      #slowMotionBtn::after {content:'Slow';font-size:8px;}
+      .scene-caption {max-width:48%;font-size:10px;}
+    }
+
+    .site-nav{display:flex;gap:6px;align-items:center;margin-left:auto}
+    .nav-link{font:700 10px var(--mono);letter-spacing:.04em;color:#a9c0d3;text-decoration:none;padding:9px 11px;border:1px solid rgba(151,180,208,.17);border-radius:9px;background:rgba(10,23,36,.8);white-space:nowrap;transition:.18s}
+    .nav-link:hover,.nav-link.active{color:#75e4eb;border-color:rgba(72,216,232,.5);background:rgba(72,216,232,.1)}
+    @media(max-width:800px){.topbar{flex-wrap:wrap}.site-nav{width:100%;justify-content:flex-start}.workspace{grid-template-columns:1fr;grid-template-rows:auto minmax(420px,1fr) auto auto}.left-panel,.right-panel,.stage-panel,.flow-panel{grid-column:1;grid-row:auto}.left-panel{max-height:220px}.right-panel{max-height:260px}.flow-track{grid-template-columns:repeat(2,minmax(0,1fr));overflow:auto}.workspace{overflow:auto}}
+  </style>
+</head>
+<body tabindex="-1">
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">⌘</div>
+      <div>
+        <div class="brand-title">INSIDE THE LAPTOP</div>
+        <div class="brand-sub">3D HARDWARE & COMPUTER ARCHITECTURE LAB</div>
+      </div>
+    </div>
+    <div class="top-center">
+      <span class="status-pill"><span class="dot" id="captureDot"></span><span id="captureStatus">Keyboard capture ON</span></span>
+      <span class="status-pill"><span class="dot warn"></span>TEACHING SIMULATION</span>
+      <span class="status-pill" id="queueStatus">Queue: 0</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn" id="learnBtn">How it works</button>
+      <button class="btn" id="modeToggle">Beginner mode</button>
+      <button class="btn primary" id="captureToggle">Pause capture</button>
+    </div>
+
+    <div class="site-nav" aria-label="Main navigation">
+      <a class="nav-link active" href="index.html">01 · Computer</a>
+      <a class="nav-link" href="cpu-lab.html">02 · CPU Lab</a>
+      <a class="nav-link" href="learn.html">03 · Learn</a>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel left-panel">
+      <div class="panel-head"><div><div class="eyebrow">01 / Live experiment</div><div class="panel-title">Type on your laptop</div></div><span class="eyebrow">INPUT</span></div>
+      <div class="panel-body">
+        <div class="capture-card section">
+          <div class="capture-row">
+            <div class="capture-label"><span class="dot" id="inputDot"></span>Live keyboard listener</div>
+            <span class="eyebrow" id="captureStateMini">ACTIVE</span>
+          </div>
+          <p class="capture-desc">Click the 3D laptop or this panel, then press a key on your physical keyboard. Each key starts a visible signal journey.</p>
+          <div class="key-preview">
+            <div class="big-key" id="keyFace">—</div>
+            <div class="key-meta"><div class="key-char" id="lastKey">Waiting for a key…</div><div class="key-code" id="lastCode">event.code: —</div></div>
+          </div>
+          <div class="data-grid">
+            <div class="data-cell"><label>Key value</label><b id="keyValue">—</b></div>
+            <div class="data-cell"><label>Code point</label><b id="keyHex">—</b></div>
+            <div class="data-cell"><label>Binary byte</label><b id="keyBinary">00000000</b></div>
+            <div class="data-cell"><label>Repeat?</label><b id="keyRepeat">NO</b></div>
+          </div>
+          <div class="kbd-hint">Browser event fields are real. The keyboard matrix, embedded-controller and internal wire activity are educational visualisations, not direct hardware readings.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-label"><span>Learning level</span><span id="modeLabel">Simple</span></div>
+          <div class="mode-row"><button id="beginnerMode" class="active">Beginner</button><button id="advancedMode">Advanced</button></div>
+          <div class="small-muted" style="margin-top:7px" id="modeDescription">Plain-language explanations and the main signal path.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-label"><span>Application output</span><button class="btn danger" id="clearOutput" style="padding:4px 7px;font-size:9px">Clear</button></div>
+          <div class="output-box" id="outputText">Your typed characters will appear here…</div>
+          <div class="small-muted" style="margin-top:6px">The 3D laptop screen mirrors this output after the final display stage.</div>
+        </div>
+
+        <div class="section advanced-box">
+          <div class="section-label"><span>8-bit character data</span><span class="eyebrow">ADVANCED</span></div>
+          <div class="telemetry">HEX <b id="advHex">0x00</b><br>BINARY <b id="advBinary">00000000</b><br>DECIMAL <b id="advDecimal">0</b><br>UNICODE <b id="advUnicode">U+0000</b></div>
+          <div class="bit-row" id="bitRow"><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span></div>
+        </div>
+
+        <div class="section">
+          <div class="section-label"><span>Quick tests</span><span class="eyebrow">DEMO</span></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" id="demoHello">Type HELLO</button>
+            <button class="btn" id="demoNumber">Type 123</button>
+          </div>
+          <p class="footer-note">The demo buttons inject sample characters into the same learning pipeline.</p>
+        </div>
+      </div>
+    </aside>
+
+    <section class="stage-panel" aria-label="Interactive 3D laptop model">
+      <div id="scene">
+        <div class="fallback-hardware" id="fallbackHardware" hidden aria-label="2D schematic fallback for the 3D laptop view">
+          <div class="fallback-art">
+            <div class="fb-screen-shell">
+              <div class="fb-screen-inner">
+                <div class="fb-screen-top"><span>INSIDE THE LAPTOP</span><span id="fbScreenStatus">WAITING FOR INPUT</span></div>
+                <div class="fb-screen-label">DISPLAY BUFFER / FRAME OUTPUT</div>
+                <div class="fb-screen-output" id="fbScreenText">Your typed characters will appear here.</div>
+                <div class="fb-screen-cursor"></div>
+              </div>
+            </div>
+            <div class="fb-hinge"></div>
+            <div class="fb-base">
+              <div class="fb-board">
+                <button class="fb-chip fb-ec" data-fallback-part="ec"><b>EC</b><small>Embedded controller</small></button>
+                <button class="fb-chip fb-host" data-fallback-part="host"><b>I/O</b><small>Host interface</small></button>
+                <button class="fb-chip fb-cpu" data-fallback-part="cpu"><b>CPU</b><small>Control · ALU · Registers</small></button>
+                <button class="fb-chip fb-gpu" data-fallback-part="gpu"><b>GPU</b><small>Graphics</small></button>
+                <button class="fb-chip fb-ram" data-fallback-part="ram"><b>RAM</b><small>Working memory</small></button>
+                <button class="fb-chip fb-ssd" data-fallback-part="ssd"><b>SSD</b><small>Persistent storage</small></button>
+                <button class="fb-chip fb-power" data-fallback-part="battery"><b>POWER</b><small>Battery + regulators</small></button>
+                <button class="fb-chip fb-cooling" data-fallback-part="cooling"><b>THERMAL</b><small>Fans + heat pipes</small></button>
+                <div class="fb-trace fb-trace-one"></div><div class="fb-trace fb-trace-two"></div><div class="fb-trace fb-trace-three"></div>
+              </div>
+              <div class="fb-keyboard">
+                <div class="fb-key-row"><i>Q</i><i>W</i><i>E</i><i>R</i><i>T</i><i>Y</i><i>U</i><i>I</i><i>O</i><i>P</i></div>
+                <div class="fb-key-row"><i>A</i><i>S</i><i>D</i><i>F</i><i>G</i><i>H</i><i>J</i><i>K</i><i>L</i></div>
+                <div class="fb-key-row"><i>Z</i><i>X</i><i>C</i><i>V</i><i>B</i><i>N</i><i>M</i><i>⌫</i><i>↵</i></div>
+              </div>
+              <div class="fb-trackpad"></div>
+            </div>
+            <div class="fb-signal" id="fallbackSignal"></div>
+          </div>
+          <div class="fb-fallback-note"><b>2D compatibility view</b> · Three.js/WebGL is unavailable. Keyboard input and the learning pipeline remain interactive.</div>
+        </div>
+      </div>
+      <div class="scene-top"><div class="scene-kicker">LIVE 3D HARDWARE VIEW</div><div class="scene-caption" id="sceneCaption">A laptop, opened for learning</div></div>
+      <div class="scene-controls">
+        <button class="btn active" data-view="overview">Overview</button>
+        <button class="btn" data-view="exploded">Exploded</button>
+        <button class="btn" data-view="signal">Signal path</button>
+        <button class="btn" id="slowMotionBtn" title="Slow down each simulated stage">Slow mode: OFF</button>
+        <button class="btn" id="resetView">Reset view</button>
+      </div>
+      <div class="scene-bottom">
+        <div class="legend">
+          <span class="legend-item"><i class="legend-dot" style="background:#f6bd60"></i>Input / control</span>
+          <span class="legend-item"><i class="legend-dot" style="background:#48d8e8"></i>Data</span>
+          <span class="legend-item"><i class="legend-dot" style="background:#51d6a1"></i>Memory / display</span>
+          <span class="legend-item"><i class="legend-dot" style="background:#ef8db5"></i>Processing</span>
+        </div>
+        <div class="scene-hint">DRAG TO ORBIT · SCROLL TO ZOOM · CLICK A PART</div>
+      </div>
+    </section>
+
+    <aside class="panel right-panel">
+      <div class="panel-head"><div><div class="eyebrow">02 / Hardware explorer</div><div class="panel-title">Laptop components</div></div><span class="eyebrow">3D SELECT</span></div>
+      <div class="panel-body">
+        <div class="detail-hero" id="detailHero">
+          <div class="eyebrow" id="partCategory">SYSTEM OVERVIEW</div>
+          <h3 id="partName">Explore the laptop</h3>
+          <p id="partSummary">Select a component in the 3D model or choose one below to understand its job in the computer.</p>
+        </div>
+        <div class="detail-block"><h4>What it does</h4><p id="partRole">A laptop combines input, processing, memory, storage, power, cooling and display systems in one portable computer.</p></div>
+        <div class="detail-block"><h4>Simple analogy</h4><p id="partAnalogy">Think of the laptop as a small workshop: input devices give instructions, processing units work on them, memory holds active information, and the display shows results.</p></div>
+        <div class="detail-block"><h4>Engineering view</h4><p id="partTech">The parts communicate through electrical interfaces and buses. The operating system and firmware coordinate access to the hardware.</p></div>
+        <div class="detail-block"><h4>Connected systems</h4><div class="connection-list" id="partConnections"><span class="connection">Keyboard</span><span class="connection">CPU</span><span class="connection">Memory</span><span class="connection">Display</span></div></div>
+        <div class="detail-block advanced-box"><h4>Live telemetry / model values</h4><div class="telemetry" id="partTelemetry">No active event.</div></div>
+        <div class="detail-block advanced-box"><h4>Five-stage teaching pipeline</h4><div class="telemetry" id="cpuPipeline">T0 FETCH → T1 DECODE → T2 EXECUTE → T3 MEMORY → T4 WRITEBACK</div></div>
+        <div class="advanced-note advanced-box" style="margin-top:10px">Advanced values shown here are simulator state, not electrical measurements from your physical laptop.</div>
+        <div class="detail-block">
+          <div class="section-label"><span>Choose a component</span><span class="eyebrow">SELECT</span></div>
+          <div class="track-filters" id="trackFilters" aria-label="Filter components by engineering discipline">
+            <button class="track-filter active" data-track="ALL">All</button>
+            <button class="track-filter" data-track="CSE">CSE</button>
+            <button class="track-filter" data-track="ECE">ECE</button>
+            <button class="track-filter" data-track="EEE">EEE</button>
+          </div>
+          <div class="component-list" id="componentList"></div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="panel flow-panel">
+      <div class="flow-head"><div><div class="eyebrow">03 / Follow one keystroke</div><div class="panel-title">How input becomes something you see</div></div><div class="eyebrow" id="progressText">WAITING FOR INPUT</div></div>
+      <div class="flow-track" id="flowTrack">
+        <button class="flow-node" data-step="0"><span class="num">01 · INPUT</span><span class="name">Keyboard</span><span class="sub">Switch / matrix</span></button>
+        <button class="flow-node" data-step="1"><span class="num">02 · FIRMWARE</span><span class="name">Embedded controller</span><span class="sub">Key scan code</span></button>
+        <button class="flow-node" data-step="2"><span class="num">03 · INTERFACE</span><span class="name">Host / HID</span><span class="sub">Input report</span></button>
+        <button class="flow-node" data-step="3"><span class="num">04 · SOFTWARE</span><span class="name">OS + browser</span><span class="sub">KeyboardEvent</span></button>
+        <button class="flow-node" data-step="4"><span class="num">05 · PROCESS</span><span class="name">CPU</span><span class="sub">Instruction flow</span></button>
+        <button class="flow-node" data-step="5"><span class="num">06 · STORE</span><span class="name">RAM</span><span class="sub">Application data</span></button>
+        <button class="flow-node" data-step="6"><span class="num">07 · OUTPUT</span><span class="name">GPU + display</span><span class="sub">Pixels on screen</span></button>
+      </div>
+      <div class="flow-detail"><div><strong id="stepTitle">Ready — press any key</strong><p id="stepDescription">The simulator will highlight each stage and animate a signal through the 3D laptop.</p></div><div class="flow-state" id="stepTelemetry">KEY: — · DATA: —</div></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal-backdrop" id="learnModal">
+  <div class="modal">
+    <button class="btn modal-close" id="closeLearn">Close ✕</button>
+    <div class="eyebrow">A quick architecture lesson</div>
+    <h2>What are you actually seeing?</h2>
+    <p>When you press a key, laptop keyboard hardware detects a switch state. Many laptop keyboards are scanned as a row-and-column matrix by firmware in an embedded controller (the exact design varies by manufacturer and model). The controller reports key information to the host. The operating system processes the input and the browser receives a <code>keydown</code> event. This simulator can read browser event fields such as <code>event.key</code> and <code>event.code</code> — it cannot read the raw voltage, keyboard matrix lines, CPU pins, cache traffic or RAM electrical signals.</p>
+    <p>The 3D route before the browser event is an educational model of a typical input path. The CPU, RAM and GPU stages are also simplified teaching models: the webpage does not trace the actual machine instructions executed by your laptop's processor. At the last stage, the browser really does update this simulator's visual output, while the exact GPU/compositor work is managed by the browser and operating system.</p>
+    <ul>
+      <li><b>Beginner mode:</b> plain-language explanations and the high-level data path.</li>
+      <li><b>Advanced mode:</b> key codes, binary/hex values, byte-level data and illustrative CPU pipeline telemetry.</li>
+      <li><b>3D controls:</b> drag to rotate, scroll to zoom, click a component to inspect it, and use Exploded view to separate the internal parts.</li>
+    </ul>
+    <p>For an internal keyboard, the EC and host connection can vary (for example, platform-specific embedded-controller interfaces). External USB keyboards use the USB HID path. The diagram is intentionally generic rather than claiming every laptop has the same wiring.</p>
+    <div class="footer-note">Learning references: MDN KeyboardEvent documentation · Intel Open EC Firmware keyboard matrix documentation · Linux kernel HID documentation.</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const hex = (n, digits = 2) => '0x' + (n >>> 0).toString(16).toUpperCase().padStart(digits, '0');
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const PARTS = {
+    keyboard: { name:'Keyboard assembly', category:'INPUT DEVICE', icon:'⌨️', summary:'The physical keys detect your press and release actions.', role:'A key switch changes an electrical state. Keyboard firmware or a keyboard controller scans the keyboard matrix and identifies which row and column changed.', analogy:'Like a grid of doorbells. The controller checks rows and columns to discover which button was pressed.', tech:'A matrix keyboard uses row and column conductors. Debouncing prevents one physical press from being interpreted as multiple presses. Laptop implementations vary.', connections:['Embedded controller','Key matrix','Host interface'], telemetry:() => `LAST KEY: ${state.lastEvent?.key ?? '—'}\nEVENT CODE: ${state.lastEvent?.code ?? '—'}\nBROWSER EVENT: ${state.lastEvent ? 'RECEIVED' : 'WAITING'}` },
+    ec: { name:'Embedded controller (EC)', category:'FIRMWARE / CONTROL', icon:'🧩', summary:'A small controller handles many low-level laptop tasks.', role:'In many laptops, an embedded controller manages keyboard scanning and platform functions such as power-button handling, battery coordination or fan control. Its responsibilities vary by design.', analogy:'A receptionist: it watches small hardware events and passes relevant messages to the main computer.', tech:'The EC runs firmware on a separate microcontroller. It may communicate with the host over a platform-specific interface such as eSPI or another implementation-dependent connection.', connections:['Keyboard matrix','Host / chipset','Battery','Cooling fans'], telemetry:() => `MODEL STATE: ${state.lastEvent ? 'KEY EVENT PENDING / PROCESSED' : 'IDLE'}\nSCAN CODE: not exposed to this webpage\nEC SIGNAL: simulated` },
+    host: { name:'Host interface / chipset', category:'I/O CONNECTIVITY', icon:'🔌', summary:'The host-side interface transports input information toward the operating system.', role:'The host platform receives input from the keyboard controller or USB host controller. The exact route depends on whether the keyboard is internal or external and on the laptop platform.', analogy:'A dispatch centre that routes messages to the right software subsystem.', tech:'External USB keyboards use USB and HID reports. Internal laptop keyboards may use an embedded-controller path. This model represents the common concept, not one chipset schematic.', connections:['Embedded controller','USB / I/O','Operating system','CPU'], telemetry:() => `INPUT TYPE: internal keyboard model\nHOST ROUTE: abstracted\nHID: conceptual stage` },
+    os: { name:'Operating system + browser', category:'SOFTWARE INPUT STACK', icon:'🪟', summary:'The operating system processes the input and the browser delivers a keyboard event to this page.', role:'The OS input stack and browser event system translate lower-level device input into an event that an application can handle. This project receives KeyboardEvent.key and KeyboardEvent.code.', analogy:'A translator that turns a device message into an event an app can understand.', tech:'This is the first stage where the webpage can observe the event. The page cannot inspect raw keyboard voltages, matrix scans or private OS driver traffic.', connections:['Host interface','CPU','Browser application'], telemetry:() => `event.key: ${state.lastEvent?.key ?? '—'}\nevent.code: ${state.lastEvent?.code ?? '—'}\nrepeat: ${state.lastEvent?.repeat ?? false}` },
+    cpu: { name:'CPU / processor', category:'COMPUTE', icon:'🧠', summary:'The CPU executes program instructions and coordinates work across the system.', role:'The processor runs operating-system, browser and application code. It performs arithmetic, logic, branching and data movement. A laptop may use integrated graphics on the same silicon package.', analogy:'The main worker that follows instructions and coordinates tasks.', tech:'A CPU core contains control logic, registers, execution units, caches and instruction pipelines. This project includes an illustrative five-stage pipeline, not live CPU tracing.', connections:['L1 / L2 / L3 cache','RAM','GPU','Storage','Chipset'], telemetry:() => `PC (teaching): ${hex(state.cpu.pc,4)}\nMAR: ${hex(state.cpu.mar,4)}\nMDR: ${hex(state.cpu.mdr,2)}\nIR: ${state.cpu.ir}\nR0 (teaching): ${hex(state.cpu.r0,2)}\nFLAGS: Z=${state.cpu.flags.z} N=${state.cpu.flags.n}\nPIPELINE: ${state.cpu.stage}` },
+    controlUnit: { name:'Control unit', category:'CPU MICROARCHITECTURE', icon:'🎛️', summary:'The control unit coordinates instruction execution inside a CPU core.', role:'It interprets instructions and generates control signals that coordinate register reads, ALU operations, memory access and writeback.', analogy:'A conductor that tells each section of an orchestra when to act.', tech:'Instruction decode logic and control circuitry steer datapaths and execution resources. Modern CPUs use complex out-of-order control rather than one simple fixed controller.', connections:['Instruction decoder','Registers','ALU','Execution pipeline'] },
+    alu: { name:'Arithmetic logic unit (ALU)', category:'CPU MICROARCHITECTURE', icon:'➕', summary:'The ALU performs integer arithmetic and logical operations.', role:'It performs operations such as addition, subtraction, comparisons, AND, OR and XOR. Results are written to registers or used by later instructions.', analogy:'A calculator built into the processor.', tech:'An ALU is made from combinational logic and arithmetic structures. Real processors may have several integer, vector and address-generation units.', connections:['Registers','Control unit','Execution pipeline'] },
+    registers: { name:'CPU registers', category:'CPU MICROARCHITECTURE', icon:'▥', summary:'Registers are tiny, very fast storage locations inside a CPU core.', role:'They hold operands, addresses, instruction state and intermediate results while instructions execute.', analogy:'A few sticky notes held directly in the worker’s hand.', tech:'Architectural registers are part of the instruction set. Physical register files and renaming structures in modern CPUs can be more complex than the visible teaching model.', connections:['ALU','Control unit','L1 cache'] },
+    cache: { name:'CPU cache hierarchy', category:'FAST MEMORY', icon:'⚡', summary:'Caches keep recently used instructions and data close to the CPU cores.', role:'L1, L2 and often shared L3 caches reduce average access time by avoiding some trips to main memory.', analogy:'A small frequently-used shelf next to the work desk, before reaching the big storeroom.', tech:'Caches store fixed-size cache lines and use tags, indexing and replacement policies. Cache coherence keeps shared data consistent across cores.', connections:['CPU cores','Memory controller','RAM'] },
+    ram: { name:'RAM / main memory', category:'VOLATILE MEMORY', icon:'▤', summary:'RAM holds active program data so the CPU can access it quickly.', role:'The browser, operating system and running applications use RAM for code, objects, buffers and other temporary working data. RAM is volatile: its contents are not retained when power is removed.', analogy:'A work desk where the computer keeps the files it is using right now.', tech:'DRAM stores bits in memory cells that require refresh. The memory controller schedules reads and writes across channels and memory ranks depending on the platform.', connections:['CPU memory controller','Applications','Integrated GPU'], telemetry:() => `APPLICATION BUFFER: ${state.output.length} characters\nLAST BYTE: ${state.lastEvent ? hex(state.lastEvent.byte,2) : '—'}\nSTORAGE CLASS: volatile (model)` },
+    gpu: { name:'GPU / graphics processor', category:'GRAPHICS', icon:'🎮', summary:'The GPU accelerates graphics work and helps turn application output into images.', role:'A browser can use GPU-accelerated rendering and compositing. Some laptops use integrated graphics; others also include a discrete GPU. The exact rendering path varies by browser and hardware.', analogy:'A visual production team that helps prepare images for the display.', tech:"Graphics work may involve command submission, shaders, rasterization, compositing and display buffers. This page does not expose the laptop GPU's internal command stream.", connections:['CPU','RAM','Display engine','Display panel'], telemetry:() => `RENDER TARGET: browser canvas\nGPU HARDWARE: not directly observable\nSIMULATED FRAME: ${state.frameCount}` },
+    display: { name:'Display panel', category:'OUTPUT DEVICE', icon:'🖥️', summary:'The panel converts display data into light that your eyes can see.', role:'The display system updates pixels using panel technology such as LCD or OLED. Brightness, refresh rate and colour are controlled through display electronics.', analogy:'A sheet of tiny controllable lights that draws the final picture.', tech:'The GPU/display engine produces a frame, and the display interface and panel electronics drive pixel values. This simulator updates a CanvasTexture on the 3D screen.', connections:['GPU / display engine','Display cable','Backlight / panel driver'], telemetry:() => `SIMULATOR OUTPUT: ${state.output.length} characters\nTEXTURE UPDATES: ${state.frameCount}\nPANEL MODEL: 3D canvas display` },
+    motherboard: { name:'Motherboard', category:'MAIN CIRCUIT BOARD', icon:'▦', summary:"The motherboard connects the laptop's major components.", role:'It provides the physical circuit board, power distribution, connectors and signal routing between the CPU, memory, storage, ports and supporting controllers.', analogy:'The roads and utility network connecting every neighbourhood in a city.', tech:'Copper traces, planes, vias, connectors and power-delivery circuits carry signals and energy. High-speed lanes require controlled impedance and careful routing.', connections:['CPU','RAM','SSD','Wi-Fi','Power system'], telemetry:() => `BOARD MODEL: multi-layer PCB representation\nSIGNAL ROUTES: conceptual 3D traces` },
+    ssd: { name:'SSD / NVMe storage', category:'NON-VOLATILE STORAGE', icon:'▰', summary:'The SSD stores files and programs even when the laptop is powered off.', role:'The operating system, applications and personal files are stored on non-volatile flash memory. The SSD controller manages flash translation, wear levelling and error correction.', analogy:'A filing cabinet that keeps information after the workday ends.', tech:'An NVMe SSD typically communicates over PCIe. NAND flash is organised into pages and blocks; writes and erases have different granularities.', connections:['CPU / chipset','PCIe','Operating system','Files'], telemetry:() => `STORAGE: persistent\nMODEL: M.2 NVMe module\nLIVE SSD TRAFFIC: not measured` },
+    cooling: { name:'Cooling system', category:'THERMAL MANAGEMENT', icon:'❄️', summary:'Fans and heat pipes move heat away from hot components.', role:'The cooling assembly transfers heat from the CPU/GPU to fins, where fans push air through the exhaust. Firmware may adjust fan speed based on temperature.', analogy:'A radiator and fan that carry heat away from an engine.', tech:'Heat pipes use phase-change heat transfer. Thermal interface material reduces contact resistance between the chip package and heat spreader.', connections:['CPU','GPU','Fans','Exhaust vents'], telemetry:() => `FAN ROTATION: animated visual only\nTEMPERATURE: not measured\nTHERMAL CONTROL: illustrative` },
+    battery: { name:'Battery + power delivery', category:'POWER SYSTEM', icon:'🔋', summary:'The battery stores energy and power circuits create the voltages each component needs.', role:'The battery supplies DC power. Charging and power-management circuits regulate power and provide different voltage rails for the CPU, memory, display and peripherals.', analogy:'A rechargeable fuel tank plus a set of voltage regulators.', tech:'A battery-management system monitors cells and safety limits. Voltage regulator modules convert input power to tightly controlled rails for processors and memory.', connections:['Battery pack','Charger','Voltage regulators','Motherboard'], telemetry:() => `POWER RAILS: conceptual\nBATTERY STATE: not read from device\nPOWER FLOW: animated only` },
+    wifi: { name:'Wi-Fi / wireless module', category:'CONNECTIVITY', icon:'📡', summary:'The wireless adapter communicates with nearby Wi-Fi networks.', role:'A wireless module sends and receives radio signals through antennas. Drivers and the operating system manage association, authentication and network traffic.', analogy:'A radio transceiver that sends and receives messages without a cable.', tech:'The module includes RF front-end circuitry and a baseband processor. Host connectivity commonly uses PCIe or USB, depending on the module.', connections:['Antennas','Motherboard','CPU / OS','Network'], telemetry:() => `RADIO: not accessed\nLINK STATE: conceptual component` },
+    speakers: { name:'Speakers', category:'AUDIO OUTPUT', icon:'🔊', summary:'Speakers turn electrical audio signals into sound.', role:'An audio codec and amplifier produce signals that drive the speaker coils and move the diaphragms.', analogy:'A tiny loudspeaker system inside the laptop.', tech:'Digital audio is converted by a DAC or codec and amplified. The speaker transducer converts electrical energy into mechanical movement and sound pressure.', connections:['Audio codec','Amplifier','Operating system'] },
+    ports: { name:'I/O ports', category:'EXTERNAL CONNECTIVITY', icon:'⎓', summary:'Ports connect external devices such as monitors, storage and accessories.', role:'USB, audio, charging and display connectors provide external power and data paths. Available ports differ by laptop model.', analogy:"The laptop's doors for connecting outside equipment.", tech:'A USB-C connector is a physical connector shape; supported protocols and features can differ, including USB data, DisplayPort Alt Mode and USB Power Delivery.', connections:['USB controller','CPU / chipset','Power delivery','External devices'] }
+  };
+
+  const FLOW = [
+    {title:'Key switch is detected',desc:'You press a physical key. The keyboard circuit changes state. A matrix-scanning controller can determine the pressed row and column.',from:'keyboard',to:'ec',signal:'KEY SWITCH → ROW / COLUMN',kind:'Input hardware model'},
+    {title:'Embedded controller identifies the key',desc:'Firmware interprets the matrix state, handles debounce and produces key information for the host. This part is a generic laptop model.',from:'ec',to:'host',signal:'KEY SCAN → KEY DATA',kind:'Firmware model'},
+    {title:'The host receives the input',desc:'The internal keyboard controller path or an external USB HID path delivers information toward the operating system. The precise bus varies by device.',from:'host',to:'os',signal:'HOST INTERFACE → OS',kind:'Interface model'},
+    {title:'The browser receives a real event',desc:'The operating system and browser deliver a KeyboardEvent to this page. The key and code shown in the left panel come from the actual browser event.',from:'os',to:'cpu',signal:'KeyboardEvent → APP HANDLER',kind:'Real browser event boundary'},
+    {title:'The CPU runs application instructions',desc:'The CPU executes the browser and application code that handles the event. The five sub-steps below are a teaching model, not a trace of your real CPU.',from:'cpu',to:'ram',signal:'INSTRUCTIONS ↔ REGISTERS / CACHE',kind:'Illustrative CPU model'},
+    {title:'The application updates its data',desc:'The app changes its in-memory text buffer and prepares a new visual state. Active program data is represented as being held in RAM.',from:'ram',to:'gpu',signal:'APP BUFFER → RENDER DATA',kind:'Application-memory model'},
+    {title:'The screen is redrawn',desc:'The browser updates the page and its 3D display texture. Real GPU and display work is managed internally by the browser, OS and graphics driver.',from:'gpu',to:'display',signal:'FRAME → DISPLAY PIXELS',kind:'Rendered output'},
+  ];
+
+  const state = {
+    capture:true, advanced:false, output:'', queue:[], processing:false, activeStep:-1,
+    activeEvent:null, lastEvent:null, stageTimer:null, stageDuration:260, frameCount:0,
+    cpu:{pc:0x1000,ir:'IDLE',stage:'IDLE',r0:0,mar:0x0000,mdr:0,alu:0,flags:{z:1,n:0}}, selected:'cpu', exploded:0, view:'overview', componentTrack:'ALL', slowMotion:false,
+    currentFlowProgress:0, lastToast:0
+  };
+
+  // ---------- PROGRESSIVE FALLBACK (when Three.js or WebGL is unavailable) ----------
+  function initFallback(reason='') {
+    const fallback=$('fallbackHardware');
+    fallback.hidden=false;
+    $('sceneCaption').textContent='2D schematic fallback — WebGL is unavailable';
+    const sceneHint=document.querySelector('.scene-hint');if(sceneHint)sceneHint.textContent='2D SCHEMATIC · SELECT A PART';
+    $('scene').style.background='radial-gradient(ellipse at 50% 45%,rgba(35,77,102,.28),rgba(7,17,28,.12) 70%)';
+    $('captureStatus').textContent='Keyboard capture ON';
+    $('fbScreenText').textContent='Your typed characters will appear here.';
+    if(reason) console.warn('3D renderer unavailable; using schematic fallback:', reason);
+
+    const trackMap={
+      keyboard:['ECE'],ec:['ECE','EEE'],host:['ECE','CSE'],os:['CSE'],cpu:['CSE'],controlUnit:['CSE'],alu:['CSE','ECE'],registers:['CSE'],cache:['CSE'],ram:['CSE','ECE'],gpu:['CSE','ECE'],display:['ECE'],motherboard:['CSE','ECE','EEE'],ssd:['CSE'],cooling:['EEE','CSE'],battery:['EEE'],wifi:['ECE','CSE'],speakers:['ECE'],ports:['ECE','EEE']
+    };
+    function renderParts(){
+      const host=$('componentList');host.innerHTML='';
+      Object.entries(PARTS).filter(([id])=>state.componentTrack==='ALL'||(trackMap[id]||[]).includes(state.componentTrack)).forEach(([id,p])=>{
+        const b=document.createElement('button');b.className='component-btn'+(state.selected===id?' selected':'');
+        const icon=document.createElement('span');icon.className='component-icon';icon.textContent=p.icon;
+        const name=document.createElement('span');name.className='component-name';name.textContent=p.name;
+        const type=document.createElement('span');type.className='component-type';type.textContent=p.category;
+        b.append(icon,name,type);b.addEventListener('click',()=>selectPart(id));host.appendChild(b);
+      });
+    }
+    function selectPart(id){
+      const p=PARTS[id];if(!p)return;state.selected=id;
+      $('partCategory').textContent=p.category;$('partName').textContent=p.name;$('partSummary').textContent=p.summary;$('partRole').textContent=p.role;$('partAnalogy').textContent=p.analogy;$('partTech').textContent=p.tech;
+      $('partConnections').innerHTML='';p.connections.forEach(x=>{const v=document.createElement('span');v.className='connection';v.textContent=x;$('partConnections').appendChild(v);});
+      $('partTelemetry').textContent=p.telemetry?p.telemetry():'No telemetry is associated with this component.';
+      renderParts();document.querySelectorAll('[data-fallback-part]').forEach(b=>b.classList.toggle('active',b.dataset.fallbackPart===id));
+    }
+    renderParts();selectPart('cpu');
+    document.querySelectorAll('[data-fallback-part]').forEach(b=>b.addEventListener('click',()=>selectPart(b.dataset.fallbackPart)));
+    document.querySelectorAll('[data-track]').forEach(b=>b.addEventListener('click',()=>{
+      state.componentTrack=b.dataset.track;
+      document.querySelectorAll('[data-track]').forEach(x=>x.classList.toggle('active',x===b));renderParts();
+    }));
+
+    function updateBits(ev){
+      const v=ev.byte==null?'—':hex(ev.byte,2);$('keyFace').textContent=ev.key===' '?'SPACE':ev.key==='Backspace'?'⌫':ev.key==='Enter'?'↵':ev.key;
+      $('lastKey').textContent=ev.key===' '?'Space':ev.key;$('lastCode').textContent=`event.code: ${ev.code||'—'}`;
+      $('keyValue').textContent=ev.key===' '?'SPACE':ev.key;$('keyHex').textContent=v;
+      $('keyBinary').textContent=ev.byte==null?'—':ev.byte.toString(2).padStart(8,'0');$('keyRepeat').textContent=ev.repeat?'YES':'NO';
+      $('advHex').textContent=v;$('advBinary').textContent=ev.byte==null?'—':ev.byte.toString(2).padStart(8,'0');$('advDecimal').textContent=ev.byte==null?'—':String(ev.byte);
+      $('advUnicode').textContent=`U+${ev.unicode.toString(16).toUpperCase().padStart(4,'0')}`;
+      $('bitRow').innerHTML='';(ev.byte==null?'00000000':ev.byte.toString(2).padStart(8,'0')).split('').forEach(bit=>{const e=document.createElement('span');e.className='bit'+(bit==='1'?' on':'');e.textContent=bit;$('bitRow').appendChild(e);});
+    }
+    const stageXY=[[11,71],[28,60],[40,66],[50,60],[62,53],[74,62],[80,34]];
+    function highlightStage(i,ev){
+      state.activeStep=i;document.querySelectorAll('.flow-node').forEach((n,j)=>{n.classList.toggle('active',j===i);n.classList.toggle('done',j<i);});
+      const f=FLOW[i];$('progressText').textContent=`STAGE ${i+1} / 7`;$('stepTitle').textContent=f.title;
+      $('stepDescription').textContent=f.desc;$('stepTelemetry').textContent=`${f.signal} · ${ev.byte==null?'UNICODE':hex(ev.byte,2)}`;
+      $('sceneCaption').textContent=f.title;$('fbScreenStatus').textContent=`STAGE ${i+1}/7 · ${f.kind.toUpperCase()}`;
+      const [x,y]=stageXY[i];$('fallbackSignal').style.left=x+'%';$('fallbackSignal').style.top=y+'%';
+      document.querySelectorAll('[data-fallback-part]').forEach(b=>b.classList.toggle('active',b.dataset.fallbackPart===f.from));
+    }
+    function makeEvent(key,code='SIMULATED',repeat=false,isDemo=false){
+      const unicode=key==='Backspace'?8:key==='Enter'?13:key===' '?32:key.codePointAt(0);return {key,code,repeat,unicode,byte:unicode<=255?unicode:null,isDemo};
+    }
+    function appendOutput(ev){
+      if(ev.key==='Backspace')state.output=state.output.slice(0,-1);else if(ev.key==='Enter')state.output+='\n';else if(ev.key==='Tab')state.output+='  ';else if(ev.key.length===1)state.output+=ev.key;
+      state.output=state.output.slice(-320);$('outputText').textContent=state.output||'(empty buffer)';$('fbScreenText').textContent=state.output||'Your typed characters will appear here.';
+      $('fbScreenStatus').textContent='FRAME UPDATED · DISPLAY ACTIVE';state.frameCount++;
+    }
+    async function processFallback(){
+      if(state.processing)return;const ev=state.queue.shift();if(!ev){$('queueStatus').textContent='Queue: 0';return;}
+      state.processing=true;state.activeEvent=ev;$('queueStatus').textContent=`Queue: ${state.queue.length}`;
+      const isDemo=ev.isDemo;const wait=isDemo?55:(state.slowMotion?650:250);
+      for(let i=0;i<FLOW.length;i++){
+        highlightStage(i,ev);
+        if(i===4){
+          const phases=[['T0 FETCH','PC → instruction memory → IR'],['T1 DECODE','Instruction decoder selects operation'],['T2 EXECUTE','Input byte is moved into a CPU register'],['T3 MEMORY','Application buffer is read/updated'],['T4 WRITEBACK','Result is committed to register state']];
+          for(let j=0;j<phases.length;j++){
+            state.cpu.stage=phases[j][0];state.cpu.ir=phases[j][1];state.cpu.mar=0x1000+j;state.cpu.mdr=ev.byte??0;
+            if(j===2){state.cpu.r0=ev.byte??(ev.unicode&255);state.cpu.alu=state.cpu.r0;state.cpu.flags.z=state.cpu.r0===0?1:0;state.cpu.flags.n=(state.cpu.r0>>7)&1;}
+            if(j===0)state.cpu.pc=(state.cpu.pc+4)&0xffff;
+            $('stepDescription').textContent=`${FLOW[4].desc} ${phases[j][1]}`;
+            $('cpuPipeline').textContent=`${phases.map((v,k)=>(k===j?'▶ ':'')+v[0]).join(' → ')}\nPC ${hex(state.cpu.pc,4)} · MAR ${hex(state.cpu.mar,4)} · MDR ${hex(state.cpu.mdr,2)} · R0 ${hex(state.cpu.r0,2)} · Z:${state.cpu.flags.z} N:${state.cpu.flags.n}`;
+            if(PARTS[state.selected]?.telemetry)$('partTelemetry').textContent=PARTS[state.selected].telemetry();await sleep(isDemo?20:(state.slowMotion?180:75));
+          }
+        }else await sleep(wait);
+      }
+      appendOutput(ev);if(PARTS[state.selected]?.telemetry)$('partTelemetry').textContent=PARTS[state.selected].telemetry();
+      await sleep(isDemo?25:90);state.activeEvent=null;state.processing=false;state.activeStep=-1;
+      document.querySelectorAll('.flow-node').forEach(n=>n.classList.remove('active','done'));
+      $('progressText').textContent='WAITING FOR INPUT';$('stepTitle').textContent='Ready — press any key';$('stepDescription').textContent='The last key has completed its path. Press another key to trace it through the system.';$('stepTelemetry').textContent='KEY: — · DATA: —';
+      $('queueStatus').textContent=`Queue: ${state.queue.length}`;document.querySelectorAll('[data-fallback-part]').forEach(b=>b.classList.remove('active'));
+      if(state.queue.length)processFallback();else $('queueStatus').textContent='Queue: 0';
+    }
+    function enqueue(key,code='SIMULATED',repeat=false,isDemo=false){
+      const ev=makeEvent(key,code,repeat,isDemo);state.lastEvent=ev;state.queue.push(ev);updateBits(ev);$('queueStatus').textContent=`Queue: ${state.queue.length}`;
+      if(state.queue.length>18)state.queue.splice(0,state.queue.length-18);if(!state.processing)processFallback();
+      if(PARTS[state.selected]?.telemetry)$('partTelemetry').textContent=PARTS[state.selected].telemetry();
+    }
+    function keyHandler(e){
+      if(!state.capture||e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;
+      if(e.target&&(e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)))return;
+      if(e.target?.tagName==='BUTTON'&&(e.key===' '||e.key==='Enter'))return;
+      if(e.key.length===1||['Backspace','Enter'].includes(e.key)){if(e.key===' '||e.key==='Backspace')e.preventDefault();enqueue(e.key,e.code||'Unidentified',e.repeat,false);}
+    }
+    window.addEventListener('keydown',keyHandler,true);
+    window.addEventListener('pointerdown',e=>{if(!e.target.closest('button,input,select,textarea,a'))document.body.focus();});
+    $('captureToggle').addEventListener('click',()=>{state.capture=!state.capture;$('captureStatus').textContent=state.capture?'Keyboard capture ON':'Keyboard capture paused';$('captureStateMini').textContent=state.capture?'ACTIVE':'PAUSED';$('captureToggle').textContent=state.capture?'Pause capture':'Resume capture';$('captureDot').classList.toggle('warn',!state.capture);$('inputDot').classList.toggle('warn',!state.capture);});
+    $('clearOutput').addEventListener('click',()=>{state.output='';$('outputText').textContent='(empty buffer)';$('fbScreenText').textContent='Your typed characters will appear here.';});
+    $('demoHello').addEventListener('click',()=>[...'HELLO'].forEach((k,i)=>setTimeout(()=>enqueue(k,`Demo-${k}`,false,true),i*70)));
+    $('demoNumber').addEventListener('click',()=>[...'123'].forEach((k,i)=>setTimeout(()=>enqueue(k,`Demo-${k}`,false,true),i*70)));
+    function setMode(advanced){state.advanced=advanced;document.body.classList.toggle('advanced',advanced);$('modeToggle').textContent=advanced?'Advanced mode':'Beginner mode';$('beginnerMode').classList.toggle('active',!advanced);$('advancedMode').classList.toggle('active',advanced);$('modeLabel').textContent=advanced?'Advanced':'Simple';$('modeDescription').textContent=advanced?'Binary, hexadecimal, teaching registers and a five-stage CPU trace are visible.':'Plain-language explanations and the main signal path.';}
+    $('modeToggle').addEventListener('click',()=>setMode(!state.advanced));$('beginnerMode').addEventListener('click',()=>setMode(false));$('advancedMode').addEventListener('click',()=>setMode(true));
+    $('learnBtn').addEventListener('click',()=>$('learnModal').classList.add('open'));$('closeLearn').addEventListener('click',()=>$('learnModal').classList.remove('open'));
+    $('learnModal').addEventListener('click',e=>{if(e.target===$('learnModal'))$('learnModal').classList.remove('open');});
+    document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{
+      document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
+      $('sceneCaption').textContent=b.dataset.view==='exploded'?'2D schematic — component locations labelled':b.dataset.view==='signal'?'Signal path — follow each highlighted subsystem':'2D schematic fallback — WebGL is unavailable';
+    }));
+    $('resetView').addEventListener('click',()=>{$('sceneCaption').textContent='2D schematic fallback — WebGL is unavailable';});
+    $('slowMotionBtn').addEventListener('click',()=>{state.slowMotion=!state.slowMotion;$('slowMotionBtn').textContent=state.slowMotion?'Slow mode: ON':'Slow mode: OFF';$('slowMotionBtn').classList.toggle('active',state.slowMotion);});
+    $('outputText').textContent='(empty buffer)';$('queueStatus').textContent='Queue: 0';$('captureStateMini').textContent='ACTIVE';
+    setMode(false);document.body.focus();
+  }
+
+  if (!window.THREE) { initFallback('Three.js CDN could not be loaded'); return; }
+
+  // ---------- 3D SCENE ----------
+  const sceneHost = $('scene');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x091624);
+  scene.fog = new THREE.Fog(0x091624, 30, 76);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 150);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'}); }
+  catch (error) { initFallback(error?.message || 'WebGL context creation failed'); return; }
+  $('fallbackHardware').hidden = true;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.domElement.setAttribute('aria-label','Interactive 3D laptop. Drag to rotate, scroll to zoom, click a component to inspect it.');
+  sceneHost.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xc8e9ff, 0x192a38, 1.05));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.05); keyLight.position.set(-12,22,16); keyLight.castShadow = true; scene.add(keyLight);
+  const rimLight = new THREE.PointLight(0x3aa7d5, 1.1, 60); rimLight.position.set(12,9,-12); scene.add(rimLight);
+  const fillLight = new THREE.PointLight(0x1b8a79, .8, 45); fillLight.position.set(-14,6,1); scene.add(fillLight);
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshStandardMaterial({color:0x0b1724,roughness:.92,metalness:.05}));
+  floor.rotation.x = -Math.PI/2; floor.position.y = -0.2; floor.receiveShadow = true; scene.add(floor);
+  const grid = new THREE.GridHelper(80,40,0x244157,0x172d40); grid.position.y=-.18; grid.material.transparent=true; grid.material.opacity=.32; scene.add(grid);
+
+  const groups = { chassis:new THREE.Group(), screen:new THREE.Group(), keys:new THREE.Group(), parts:new THREE.Group(), traces:new THREE.Group(), effects:new THREE.Group() };
+  Object.values(groups).forEach(g => scene.add(g));
+  const partGroups = {};
+  const partMeshes = {};
+  const partLabels = [];
+  const clickTargets = [];
+  const fanRotors = [];
+  const signalCurves = [];
+  let activePulse = null;
+  const baseCamera = {theta:0.12,phi:1.05,radius:27,target:new THREE.Vector3(0,3.2,0)};
+  const cam = {theta:baseCamera.theta,phi:baseCamera.phi,radius:baseCamera.radius,target:baseCamera.target.clone()};
+  let dragging = false, lastPointer = {x:0,y:0};
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  const mat = (color, roughness=.55, metalness=.2, extra={}) => new THREE.MeshStandardMaterial({color,roughness,metalness,...extra});
+  function box(parent, size, position, material, cast=true, receive=true) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    m.position.set(...position); m.castShadow=cast; m.receiveShadow=receive; parent.add(m); return m;
+  }
+  function cyl(parent, radiusTop, radiusBottom, height, position, material, radial=32) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,height,radial),material);
+    m.position.set(...position);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;
+  }
+  function addClick(mesh,id) { mesh.userData.partId=id;clickTargets.push(mesh);partMeshes[id] ||= [];partMeshes[id].push(mesh); }
+  function addPartGroup(id, pos, lift=1) {
+    const g = new THREE.Group();g.position.set(...pos);g.userData.baseY=pos[1];g.userData.lift=lift;groups.parts.add(g);partGroups[id]=g;return g;
+  }
+  function createTextTexture(text, color='#e7f4ff', bg='#16283a') {
+    const c=document.createElement('canvas');c.width=256;c.height=256;const x=c.getContext('2d');
+    x.fillStyle=bg;x.fillRect(0,0,256,256);x.fillStyle=color;x.font='bold 112px Arial';x.textAlign='center';x.textBaseline='middle';x.fillText(text,128,132);
+    const t=new THREE.CanvasTexture(c);t.anisotropy=4;return t;
+  }
+  function addLabel(id, text, position) { partLabels.push({id,text,position:new THREE.Vector3(...position)}); }
+  function addTube(points,color,opacity=.55,radius=.055,parent=groups.traces) {
+    const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
+    const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,50,radius,7,false),new THREE.MeshBasicMaterial({color,transparent:true,opacity}));
+    parent.add(mesh);return curve;
+  }
+
+  // Laptop chassis and hinge.
+  const bodyMat=mat(0x334758,.34,.72), edgeMat=mat(0x7890a1,.26,.8), darkMat=mat(0x101d2a,.35,.4);
+  const base=box(groups.chassis,[20,.72,12],[0,.36,0],bodyMat);addClick(base,'motherboard');
+  const lip=box(groups.chassis,[19.65,.12,.18],[0,.78,5.88],edgeMat);
+  box(groups.chassis,[19.2,.12,10.9],[0,.77,0],mat(0x1b2935,.48,.42));
+  cyl(groups.chassis,.34,.34,18.2,[0,1.05,-5.65],edgeMat,32).rotation.z=Math.PI/2;
+  box(groups.chassis,[19.8,.4,.28],[0,1.0,-5.8],darkMat);
+  // Side port cut-outs and accent shapes.
+  for (let i=0;i<3;i++) {
+    const p=box(groups.chassis,[.12,.26,.82],[-10.03,.48,-3.2+i*1.45],mat(0x07121c,.45,.3));
+    p.rotation.y=Math.PI/2;
+  }
+  for (let i=0;i<2;i++) box(groups.chassis,[.12,.28,.95],[10.03,.46,-2.8+i*1.6],mat(0x07121c,.4,.3));
+  addLabel('motherboard','MOTHERBOARD',[0,1.2,-3.7]);
+  addLabel('ports','I/O PORTS',[-9.6,1.2,-1.1]);
+
+  // Keyboard deck: 4 rows of real-looking key caps; clicking one also creates a simulated key event.
+  const keyRows=[
+    ['Q','W','E','R','T','Y','U','I','O','P'],
+    ['A','S','D','F','G','H','J','K','L'],
+    ['Z','X','C','V','B','N','M',',','.','/'],
+    ['SHIFT','CTRL','ALT','SPACE','ALT','FN','←','↓','↑','↵']
+  ];
+  const keyMaterialSide=mat(0x152433,.35,.26);
+  keyRows.forEach((row,r)=>{
+    const spacing=1.62, start=-(row.length-1)*spacing/2;
+    row.forEach((letter,c)=>{
+      const w=letter==='SPACE'?5.2:(['SHIFT','CTRL','ALT','FN','↵'].includes(letter)?1.3:1.25);
+      let x=start+c*spacing;
+      if(letter==='SPACE') x=0;
+      if(r===3 && letter==='ALT' && c===4) x=4.05;
+      const key=new THREE.Group();key.position.set(x,1.06,0.25+r*1.03);groups.keys.add(key);
+      const cap=box(key,[w,.32,.78],[0,.16,0],keyMaterialSide);cap.userData.keyChar=letter;
+      const canvas=document.createElement('canvas');canvas.width=256;canvas.height=128;
+      const cx=canvas.getContext('2d');cx.clearRect(0,0,256,128);cx.fillStyle='#c7d8e5';cx.font=`${letter.length>2?'bold 27px':'bold 52px'} Arial`;cx.textAlign='center';cx.textBaseline='middle';cx.fillText(letter,128,65);
+      const tex=new THREE.CanvasTexture(canvas);tex.anisotropy=4;
+      const label=new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w*.84,1.1),.46),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false}));
+      label.rotation.x=-Math.PI/2;label.position.set(0,.326,0);key.add(label);
+      cap.userData.keyChar=letter;
+      clickTargets.push(cap);
+    });
+  });
+  const trackpad=box(groups.keys,[5.1,.07,2.35],[0,.84,5.05],mat(0x8297a7,.32,.42));trackpad.material.transparent=true;trackpad.material.opacity=.68;
+  addLabel('keyboard','KEYBOARD MATRIX',[0,1.7,2.6]);
+
+  // Display assembly, canvas-textured panel.
+  const screenFrame=box(groups.screen,[18.5,10.6,.52],[0,6.65,-5.72],mat(0x1a2b39,.3,.72));addClick(screenFrame,'display');
+  const screenCanvas=document.createElement('canvas');screenCanvas.width=1024;screenCanvas.height=576;
+  const screenCtx=screenCanvas.getContext('2d');
+  const screenTexture=new THREE.CanvasTexture(screenCanvas);screenTexture.encoding=THREE.sRGBEncoding;screenTexture.anisotropy=8;
+  const screenSurface=new THREE.Mesh(new THREE.PlaneGeometry(17.95,10.05),new THREE.MeshBasicMaterial({map:screenTexture}));
+  screenSurface.position.set(0,6.65,-5.445);groups.screen.add(screenSurface);
+  const cameraDot=cyl(groups.screen,.12,.12,.08,[8.4,11.7,-5.4],mat(0x0b151e,.25,.2),16);cameraDot.rotation.x=Math.PI/2;
+  const hinge=box(groups.screen,[17,.32,.36],[0,1.25,-5.55],edgeMat);
+  addLabel('display','DISPLAY PANEL',[0,9.0,-5.25]);
+
+  function drawScreen(message, current='READY') {
+    const ctx=screenCtx,w=screenCanvas.width,h=screenCanvas.height;
+    const grad=ctx.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#071a29');grad.addColorStop(1,'#102b3d');ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle='rgba(106,207,220,.18)';ctx.lineWidth=2;for(let x=0;x<w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=0;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    ctx.fillStyle='#67dce5';ctx.font='bold 25px Arial';ctx.fillText('INSIDE THE LAPTOP  /  LIVE DISPLAY BUFFER',54,64);
+    ctx.fillStyle='#7996aa';ctx.font='20px monospace';ctx.fillText('OUTPUT DEVICE  •  FRAME BUFFER / PIXEL PANEL',54,100);
+    ctx.strokeStyle='rgba(115,180,198,.3)';ctx.beginPath();ctx.moveTo(54,126);ctx.lineTo(w-54,126);ctx.stroke();
+    ctx.fillStyle='#edf8ff';ctx.font='bold 36px monospace';ctx.fillText('Your input:',54,190);
+    ctx.fillStyle='#74edc4';ctx.font='42px monospace';
+    const lines=String(message||'').split('\n').slice(-5);lines.forEach((line,i)=>ctx.fillText(line.slice(-48),54,260+i*58));
+    ctx.fillStyle='#8ba8bc';ctx.font='18px monospace';ctx.fillText(`PIPELINE STATUS: ${current}`,54,h-52);
+    ctx.fillStyle='#50d8e7';ctx.fillRect(w-90,h-66,22,22);screenTexture.needsUpdate=true;
+  }
+  drawScreen('', 'WAITING FOR KEYBOARD INPUT');
+
+  // Motherboard PCB.
+  const board=addPartGroup('motherboard',[0,1.2,-1.8],.35);
+  const pcb=box(board,[15.2,.24,7.5],[0,0,0],mat(0x174b43,.78,.22));addClick(pcb,'motherboard');
+  const pcbLineMat=new THREE.MeshBasicMaterial({color:0x2a9d83,transparent:true,opacity:.48});
+  for(let i=0;i<12;i++){const line=box(board,[.035,.025,6.6],[-7+i*1.25,.14,0],pcbLineMat,false,false);}
+  for(let i=0;i<8;i++){const line=box(board,[13.5,.025,.035],[0,.145,-3+i*.85],pcbLineMat,false,false);}
+  addLabel('motherboard','MULTI-LAYER PCB',[0,2.1,-4.7]);
+
+  // CPU package / die.
+  const cpu=addPartGroup('cpu',[-1.7,1.85,-1.7],1.5);
+  const cpuPkg=box(cpu,[3.5,.78,3.5],[0,0,0],mat(0x202b35,.22,.72));addClick(cpuPkg,'cpu');
+  const cpuDie=box(cpu,[2.1,.16,2.1],[0,.48,0],mat(0x7b5942,.25,.6));addClick(cpuDie,'cpu');
+  box(cpu,[1.65,.05,1.65],[0,.59,0],mat(0xc58b53,.22,.7));
+  const innerParts=[
+    {id:'controlUnit',pos:[-.47,.68,-.43],size:[.68,.09,.63],color:0x4b6887,label:'CONTROL'},
+    {id:'alu',pos:[.43,.68,-.43],size:[.68,.09,.63],color:0x247d70,label:'ALU'},
+    {id:'registers',pos:[-.47,.68,.43],size:[.68,.09,.63],color:0x927143,label:'REG FILE'},
+    {id:'cache',pos:[.43,.68,.43],size:[.68,.09,.63],color:0x5966a1,label:'CACHE'}
+  ];
+  innerParts.forEach(part=>{const piece=box(cpu,part.size,part.pos,mat(part.color,.3,.55));addClick(piece,part.id);});
+  addLabel('cpu','CPU CORE / MICROARCHITECTURE',[-1.7,3.1,-1.7]);
+  addLabel('controlUnit','CONTROL UNIT',[-2.17,2.75,-2.13]);
+  addLabel('alu','ALU',[-1.27,2.75,-2.13]);
+  addLabel('registers','REGISTERS',[-2.17,2.75,-1.27]);
+  addLabel('cache','CACHE',[-1.27,2.75,-1.27]);
+
+  // GPU package.
+  const gpu=addPartGroup('gpu',[2.8,1.78,-1.65],1.4);
+  const gpuPkg=box(gpu,[3.2,.7,2.75],[0,0,0],mat(0x26343d,.24,.7));addClick(gpuPkg,'gpu');
+  const gpuDie=box(gpu,[1.8,.12,1.45],[0,.43,0],mat(0x4d6382,.2,.68));addClick(gpuDie,'gpu');
+  addLabel('gpu','GPU / GRAPHICS',[2.8,2.95,-1.65]);
+
+  // Embedded controller and host/I/O controller.
+  const ec=addPartGroup('ec',[-5.75,1.7,-1.5],1.15);
+  const ecMesh=box(ec,[1.6,.56,1.6],[0,0,0],mat(0x435e76,.28,.55));addClick(ecMesh,'ec');
+  const ecLabel=box(ec,[.8,.06,.8],[0,.32,0],mat(0x91b3c7,.28,.4));
+  addLabel('ec','EMBEDDED CONTROLLER',[-5.75,2.8,-1.5]);
+  const host=addPartGroup('host',[-3.9,1.65,-3.25],1.05);
+  const hostMesh=box(host,[1.75,.55,1.25],[0,0,0],mat(0x344b68,.26,.62));addClick(hostMesh,'host');
+  addLabel('host','HOST / I-O CONTROLLER',[ -3.9,2.65,-3.25]);
+  const osNode=box(groups.effects,[1.25,.42,1.1],[-3.65,2.45,.05],mat(0x25405b,.32,.5,{emissive:0x071b2f}));addClick(osNode,'os');
+  addLabel('os','OS + BROWSER',[ -3.65,3.15,.05]);
+
+  // Two memory sticks.
+  const ram=addPartGroup('ram',[5.25,1.72,-2.7],1.0);
+  for(let i=0;i<2;i++){
+    const stick=box(ram,[.72,.2,3.25],[i*.95,0,0],mat(0x235a4f,.4,.55));addClick(stick,'ram');
+    for(let j=0;j<8;j++) box(ram,[.53,.35,.25],[i*.95,.18,-1.3+j*.37],mat(0x263f50,.27,.6));
+    box(ram,[.78,.045,.16],[i*.95,-.11,1.63],mat(0xb18c4a,.25,.7));
+  }
+  addLabel('ram','RAM MODULES',[5.6,2.75,-2.7]);
+
+  // NVMe SSD.
+  const ssd=addPartGroup('ssd',[6.3,1.7,-.25],.9);
+  const ssdBoard=box(ssd,[1.35,.18,4.0],[0,0,0],mat(0x27624f,.48,.4));addClick(ssdBoard,'ssd');
+  for(let i=0;i<4;i++){const chip=box(ssd,[.85,.2,.68],[0,.18,-1.35+i*.9],mat(0x1d2934,.25,.6));addClick(chip,'ssd');}
+  addLabel('ssd','M.2 NVMe SSD',[6.4,2.5,-.3]);
+
+  // Cooling fan units and heat pipes.
+  const cooling=addPartGroup('cooling',[0,1.72,0],.55);
+  [-5.4,5.4].forEach((x,idx)=>{
+    const fanGroup=new THREE.Group();fanGroup.position.set(x,0,-3.55);cooling.add(fanGroup);
+    const ring=cyl(fanGroup,1.35,1.35,.28,[0,0,0],mat(0x566c7b,.35,.65),40);addClick(ring,'cooling');
+    const rotor=new THREE.Group();fanGroup.add(rotor);fanRotors.push({mesh:rotor,dir:idx?1:-1});
+    const hub=cyl(rotor,.34,.34,.34,[0,.22,0],mat(0x9eb2c0,.24,.72),24);addClick(hub,'cooling');
+    for(let b=0;b<9;b++){
+      const blade=box(rotor,[.18,.12,1.02],[Math.sin(b*Math.PI*2/9)*.65,.19,Math.cos(b*Math.PI*2/9)*.65],mat(0x85a5b7,.4,.55));
+      blade.rotation.y=-b*Math.PI*2/9;addClick(blade,'cooling');
+    }
+  });
+  const heatMat=mat(0xb66c36,.28,.8);
+  const heat1=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-1.7,.95,-1.7),new THREE.Vector3(-2.7,.95,-2.8),new THREE.Vector3(-4.0,.88,-3.3),new THREE.Vector3(-5.4,.83,-3.55)]),36,.13,10,false),heatMat);cooling.add(heat1);addClick(heat1,'cooling');
+  const heat2=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(2.8,.93,-1.65),new THREE.Vector3(3.7,.93,-2.6),new THREE.Vector3(4.6,.88,-3.2),new THREE.Vector3(5.4,.83,-3.55)]),36,.13,10,false),heatMat);cooling.add(heat2);addClick(heat2,'cooling');
+  addLabel('cooling','DUAL FANS + HEAT PIPES',[0,3.05,-3.9]);
+
+  // Battery, Wi-Fi module, speakers, I/O ports.
+  const battery=addPartGroup('battery',[0,1.45,4.15],.3);
+  const batteryBody=box(battery,[12.4,.68,2.15],[0,0,0],mat(0x314a5a,.42,.48));addClick(batteryBody,'battery');
+  for(let i=0;i<6;i++)box(battery,[1.7,.48,1.55],[-5.15+i*2.06,.09,0],mat(0x455c67,.4,.42));
+  addLabel('battery','BATTERY PACK',[0,2.4,4.15]);
+  const wifi=addPartGroup('wifi',[-6.1,1.65,.85],.7);
+  const wifiBoard=box(wifi,[1.7,.17,1.45],[0,0,0],mat(0x344f6f,.4,.6));addClick(wifiBoard,'wifi');
+  const wifiChip=box(wifi,[.75,.18,.68],[0,.18,0],mat(0x1d2a37,.23,.5));addClick(wifiChip,'wifi');
+  addLabel('wifi','WI-FI MODULE',[-6.1,2.55,.85]);
+  const speakers=addPartGroup('speakers',[0,1.3,1.6],.5);
+  [-8.25,8.25].forEach(x=>{const sp=cyl(speakers,.7,.7,.45,[x,0,0],mat(0x1c2731,.52,.45),24);sp.scale.set(1,1,.78);addClick(sp,'speakers');});
+  addLabel('speakers','SPEAKERS',[8.15,2.0,1.55]);
+  const ports=addPartGroup('ports',[0,1.0,0],.2);
+  [-1,1].forEach(side=>{for(let i=0;i<3;i++){const p=box(ports,[.18,.28,.78],[side*9.93,.0,-3.2+i*1.35],mat(0x07111b,.3,.5));addClick(p,'ports');}});
+
+  // Fine-grain board detailing: package leads, VRM stages, capacitors, fasteners and heatsink fins.
+  const goldMat=mat(0xc49a55,.24,.72), silverMat=mat(0x8799a5,.2,.82), blackMat=mat(0x111a22,.24,.48);
+  // CPU substrate contact field and die-retention frame.
+  for(let z=-1.42;z<=1.43;z+=.22){for(let x=-1.42;x<=1.43;x+=.22){if(Math.abs(x)<1.02&&Math.abs(z)<1.02)continue;const pin=box(cpu,[.075,.035,.075],[x,-.405,z],goldMat,false,false);pin.rotation.y=(x+z)*.04;}}
+  const cpuFrame=box(cpu,[3.72,.12,3.72],[0,.39,0],silverMat,false,false);cpuFrame.material.transparent=true;cpuFrame.material.opacity=.72;
+  // VRM power stages and small capacitors around the processor.
+  for(let i=0;i<7;i++){const vrm=box(board,[.58,.22,.42],[-3.25+i*.72,.25,-2.05],blackMat);addClick(vrm,'motherboard');const cap=cyl(board,.105,.105,.32,[-3.05+i*.72,.34,-2.72],mat(0x9aa9b0,.25,.65),16);addClick(cap,'motherboard');}
+  // DIMM memory packages, individual DRAM ICs and gold edge contacts.
+  for(let stick=0;stick<2;stick++){for(let chip=0;chip<8;chip++){const z=-1.22+chip*.34;const ic=box(ram,[.48,.19,.26],[stick*.95,.23,z],mat(0x101820,.2,.55));addClick(ic,'ram');const mark=box(ram,[.28,.012,.06],[stick*.95,.33,z],mat(0x647c8a,.2,.35),false,false);}
+    for(let c=0;c<32;c++){box(ram,[.12,.025,.07],[stick*.95,-.13,1.61-c*.1],goldMat,false,false);}}
+  // NVMe controller, NAND packages and tiny passive components.
+  for(let i=0;i<4;i++){const nand=box(ssd,[.74,.16,.56],[0,.34,-1.32+i*.88],mat(0x121c25,.24,.58));addClick(nand,'ssd');}
+  for(let i=0;i<14;i++){box(ssd,[.12,.08,.12],[.48,.26,-1.45+i*.21],silverMat,false,false);}
+  // Fan screw heads, stator hub rings and curved-looking radial blades.
+  [-5.4,5.4].forEach(x=>{for(let a=0;a<4;a++){const ang=a*Math.PI/2;const screw=cyl(cooling,.085,.085,.08,[x+Math.cos(ang)*1.1,.2,-3.55+Math.sin(ang)*1.1],silverMat,12);screw.rotation.x=Math.PI/2;}});
+  // Heat-sink fin stacks add the layered metal appearance found in real laptop cooling assemblies.
+  for(let side of [-1,1]){for(let i=0;i<15;i++){const fin=box(cooling,[.12,.18,1.75],[side*5.4+(i-7)*.17,.42,-3.55],silverMat,false,false);fin.material.metalness=.86;}}
+  // Chassis fasteners and board mounting points.
+  [[-7,1.48,-4.7],[7,1.48,-4.7],[-7,1.48,1.3],[7,1.48,1.3],[0,1.48,-4.7],[0,1.48,1.3]].forEach(pos=>{const screw=cyl(groups.chassis,.12,.12,.08,pos,silverMat,16);screw.rotation.x=Math.PI/2;});
+  // PCB component clusters: inductors, connectors and tiny surface-mount devices.
+  for(let i=0;i<22;i++){const x=-6.7+(i%11)*1.32,z=-.8+Math.floor(i/11)*1.05;const comp=box(board,[.22,.12,.18],[x,.19,z],i%3===0?goldMat:blackMat,false,false);}
+
+  // Signal path route. These are conceptual links, not literal PCB netlist traces.
+  const routePoints = [
+    [0,1.55,1.25],[-5.75,2.15,-1.5],[-3.9,2.15,-3.25],[-3.65,2.6,.05],[-1.7,2.8,-1.7],[5.25,2.7,-2.7],[2.8,2.7,-1.65],[0,7.4,-5.42]
+  ];
+  const routeColors=[0xf6bd60,0xf6bd60,0x48d8e8,0xef8db5,0x48d8e8,0x51d6a1,0x51d6a1];
+  FLOW.forEach((flow,i)=>{
+    const curve=addTube([routePoints[i],[(routePoints[i][0]+routePoints[i+1][0])/2,3.5,(routePoints[i][2]+routePoints[i+1][2])/2],routePoints[i+1]],routeColors[i],.28,.045,groups.traces);
+    signalCurves.push(curve);
+  });
+  const pulse=new THREE.Mesh(new THREE.SphereGeometry(.22,18,18),new THREE.MeshBasicMaterial({color:0x65f2fb}));
+  const pulseGlow=new THREE.Mesh(new THREE.SphereGeometry(.42,16,16),new THREE.MeshBasicMaterial({color:0x65f2fb,transparent:true,opacity:.15}));
+  groups.effects.add(pulse,pulseGlow);activePulse={core:pulse,glow:pulseGlow};pulse.visible=false;pulseGlow.visible=false;
+
+  // Part labels use HTML overlay-like sprites via 3D canvas sprites.
+  function addWorldTag(text, pos) {
+    const canvas=document.createElement('canvas');canvas.width=512;canvas.height=96;const c=canvas.getContext('2d');
+    c.fillStyle='rgba(4,14,23,.82)';c.strokeStyle='rgba(92,203,220,.55)';c.lineWidth=3;
+    c.beginPath();c.roundRect(2,2,508,92,13);c.fill();c.stroke();c.fillStyle='#d6f4fb';c.font='bold 29px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(text,256,48);
+    const texture=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));sprite.scale.set(5.3,1,1);sprite.position.copy(pos);scene.add(sprite);return sprite;
+  }
+  const tags = partLabels.map(l=>({id:l.id,sprite:addWorldTag(l.text,l.position),pos:l.position}));
+
+  // ---------- COMPONENT EXPLORER ----------
+  const PART_TRACKS={keyboard:['ECE'],ec:['ECE','EEE'],host:['ECE','CSE'],os:['CSE'],cpu:['CSE'],controlUnit:['CSE'],alu:['CSE','ECE'],registers:['CSE'],cache:['CSE'],ram:['CSE','ECE'],gpu:['CSE','ECE'],display:['ECE'],motherboard:['CSE','ECE','EEE'],ssd:['CSE'],cooling:['EEE','CSE'],battery:['EEE'],wifi:['ECE','CSE'],speakers:['ECE'],ports:['ECE','EEE']};
+  function renderComponentList(){
+    const host=$('componentList');host.innerHTML='';
+    Object.entries(PARTS).filter(([id])=>state.componentTrack==='ALL'||(PART_TRACKS[id]||[]).includes(state.componentTrack)).forEach(([id,p])=>{
+      const b=document.createElement('button');b.className='component-btn'+(state.selected===id?' selected':'');b.innerHTML=`<span class="component-icon">${p.icon}</span><span class="component-name">${p.name}</span><span class="component-type">${p.category}</span>`;
+      b.addEventListener('click',()=>selectPart(id,true));host.appendChild(b);
+    });
+  }
+  function selectPart(id, focus=false){
+    const p=PARTS[id];if(!p)return;state.selected=id;
+    $('partCategory').textContent=p.category;$('partName').textContent=p.name;$('partSummary').textContent=p.summary;$('partRole').textContent=p.role;$('partAnalogy').textContent=p.analogy;$('partTech').textContent=p.tech;
+    $('partConnections').innerHTML='';p.connections.forEach(x=>{const s=document.createElement('span');s.className='connection';s.textContent=x;$('partConnections').appendChild(s);});
+    $('partTelemetry').textContent=p.telemetry?p.telemetry():'No telemetry is associated with this component.';
+    renderComponentList();
+    if(focus) focusPart(id);
+  }
+  function focusPart(id){
+    const g=partGroups[id];if(g){cam.target.set(g.position.x,Math.max(1,g.position.y+1.1),g.position.z);cam.radius= id==='display'?20:17;cam.phi=.95;}
+    if(id==='keyboard'){cam.target.set(0,1.4,2);cam.radius=18;}
+    if(id==='display'){cam.target.set(0,6.6,-5.3);cam.radius=20;}
+  }
+  renderComponentList();selectPart('cpu');
+  document.querySelectorAll('[data-track]').forEach(b=>b.addEventListener('click',()=>{
+    state.componentTrack=b.dataset.track;document.querySelectorAll('[data-track]').forEach(x=>x.classList.toggle('active',x===b));renderComponentList();
+  }));
+
+  // ---------- SCREEN + INPUT PIPELINE ----------
+  const flowNodes=[...document.querySelectorAll('.flow-node')];
+  function updateFlowUI(step){
+    state.activeStep=step;
+    flowNodes.forEach((node,i)=>{node.classList.toggle('active',i===step);node.classList.toggle('done',step>=0&&i<step);});
+    if(step<0){$('progressText').textContent='WAITING FOR INPUT';$('stepTitle').textContent='Ready — press any key';$('stepDescription').textContent='The simulator will highlight each stage and animate a signal through the 3D laptop.';$('stepTelemetry').textContent='KEY: — · DATA: —';activePulse.core.visible=false;activePulse.glow.visible=false;return;}
+    const f=FLOW[step];$('progressText').textContent=`STAGE ${step+1} / 7`;$('stepTitle').textContent=f.title;$('stepDescription').textContent=f.desc;$('stepTelemetry').textContent=`${f.kind.toUpperCase()} · ${f.signal}`;
+    $('sceneCaption').textContent=f.title;
+    if(state.activeEvent){$('stepTelemetry').textContent=`${f.signal} · ${hex(state.activeEvent.byte,2)}`;}
+    activePulse.core.material.color.setHex(routeColors[step]);activePulse.glow.material.color.setHex(routeColors[step]);activePulse.core.visible=true;activePulse.glow.visible=true;
+  }
+  function updateKeyReadouts(eventInfo){
+    const key=eventInfo.key;
+    $('keyFace').textContent=key===' '?'SPACE':key==='Backspace'?'⌫':key==='Enter'?'↵':key.length>5?key.slice(0,5):key;
+    $('lastKey').textContent=key===' '?'Space':key;
+    $('lastCode').textContent=`event.code: ${eventInfo.code||'—'}`;
+    $('keyValue').textContent=key===' '?'SPACE':key;
+    $('keyHex').textContent=eventInfo.byte==null?`U+${eventInfo.unicode.toString(16).toUpperCase()}`:hex(eventInfo.byte,2);
+    $('keyBinary').textContent=eventInfo.byte==null?'—':eventInfo.byte.toString(2).padStart(8,'0');
+    $('keyRepeat').textContent=eventInfo.repeat?'YES':'NO';
+    $('advHex').textContent=eventInfo.byte==null?'—':hex(eventInfo.byte,2);
+    $('advBinary').textContent=eventInfo.byte==null?'—':eventInfo.byte.toString(2).padStart(8,'0');
+    $('advDecimal').textContent=eventInfo.byte==null?'—':String(eventInfo.byte);
+    $('advUnicode').textContent=`U+${eventInfo.unicode.toString(16).toUpperCase().padStart(4,'0')}`;
+    $('bitRow').innerHTML='';(eventInfo.byte==null?'00000000':eventInfo.byte.toString(2).padStart(8,'0')).split('').forEach(bit=>{const s=document.createElement('span');s.className='bit'+(bit==='1'?' on':'');s.textContent=bit;$('bitRow').appendChild(s);});
+  }
+  function makeEvent(key, code='SIMULATED', repeat=false, isDemo=false){
+    const unicode=key==='Backspace'?8:key==='Enter'?13:key===' '?32:key.codePointAt(0);
+    const byte=unicode<=255?unicode:null;
+    return {key,code,repeat,unicode,byte,isDemo,created:performance.now()};
+  }
+  function enqueueKey(key, code='SIMULATED', repeat=false, isDemo=false){
+    if(!key)return;
+    const ev=makeEvent(key,code,repeat,isDemo);state.lastEvent=ev;state.queue.push(ev);updateKeyReadouts(ev);
+    $('queueStatus').textContent=`Queue: ${state.queue.length}`;
+    if(state.queue.length>18){state.queue.splice(0,state.queue.length-18);toast('Input queue capped at 18 events for smooth playback.');}
+    if(!state.processing)processNext();
+    if(PARTS[state.selected])$('partTelemetry').textContent=PARTS[state.selected].telemetry?PARTS[state.selected].telemetry():'—';
+  }
+  async function processNext(){
+    const ev=state.queue.shift();$('queueStatus').textContent=`Queue: ${state.queue.length}`;
+    if(!ev){state.processing=false;updateFlowUI(-1);return;}
+    state.processing=true;state.activeEvent=ev;state.currentFlowProgress=0;
+    updateKeyReadouts(ev);
+    for(let i=0;i<FLOW.length;i++){
+      if(state.activeEvent!==ev)break;
+      updateFlowUI(i);
+      if(i===4){
+        const cpuPhases=[
+          ['T0 FETCH','Fetch the input-handler instruction from the teaching program.','FETCH INPUT_HANDLER'],
+          ['T1 DECODE','Decode the operation and select the register/control signals.','DECODE MOV R0, KEY'],
+          ['T2 EXECUTE','The illustrative ALU path places the incoming key value into a working register.','R0 ← KEY BYTE'],
+          ['T3 MEMORY','The model reads the application buffer state from simulated main memory.','READ APP BUFFER'],
+          ['T4 WRITEBACK','The teaching CPU updates its register state and completes this instruction.','WRITEBACK R0']
+        ];
+        for(let p=0;p<cpuPhases.length;p++){
+          state.cpu.stage=cpuPhases[p][0];state.cpu.ir=cpuPhases[p][2];state.cpu.mar=0x1000+p;state.cpu.mdr=ev.byte??(ev.unicode&255);
+          if(p===0)state.cpu.pc=(state.cpu.pc+4)&0xffff;
+          if(p===2){state.cpu.r0=ev.byte??(ev.unicode&255);state.cpu.flags.z=state.cpu.r0===0?1:0;state.cpu.flags.n=(state.cpu.r0>>7)&1;}
+          $('stepDescription').textContent=`${FLOW[4].desc} ${cpuPhases[p][1]}`;
+          $('cpuPipeline').textContent=`${cpuPhases.map((v,j)=>(j===p?'▶ ':'')+v[0]).join('  →  ')}\nPC ${hex(state.cpu.pc,4)} · MAR ${hex(state.cpu.mar,4)} · MDR ${hex(state.cpu.mdr,2)} · R0 ${hex(state.cpu.r0,2)} · Z:${state.cpu.flags.z} N:${state.cpu.flags.n}\nIR: ${state.cpu.ir}`;
+          if(PARTS[state.selected]?.telemetry)$('partTelemetry').textContent=PARTS[state.selected].telemetry();
+          state.currentFlowProgress=(p+1)/cpuPhases.length;
+          await sleep(ev.isDemo ? 18 : (state.slowMotion ? 180 : 75));
+        }
+      } else {
+        const start=performance.now();
+        const stageDuration = ev.isDemo ? 55 : (state.slowMotion ? 650 : state.stageDuration);
+        while(performance.now()-start<stageDuration){
+          state.currentFlowProgress=clamp((performance.now()-start)/stageDuration,0,1);
+          await sleep(18);
+        }
+      }
+      if(i===5){$('outputText').textContent=state.output||'(buffer will update at display stage)';}
+    }
+    if(state.activeEvent===ev){
+      applyKeyToOutput(ev);
+      state.frameCount++;
+      drawScreen(state.output,'FRAME UPDATED');
+      $('outputText').textContent=state.output||'(empty buffer)';
+      $('sceneCaption').textContent='Output rendered to the 3D display';
+      if(PARTS[state.selected]?.telemetry)$('partTelemetry').textContent=PARTS[state.selected].telemetry();
+      await sleep(100);
+    }
+    state.activeEvent=null;state.processing=false;updateFlowUI(-1);
+    if(state.queue.length)processNext();
+    else $('queueStatus').textContent='Queue: 0';
+  }
+  function applyKeyToOutput(ev){
+    if(ev.key==='Backspace'){state.output=state.output.slice(0,-1);}
+    else if(ev.key==='Enter'){state.output+='\n';}
+    else if(ev.key==='Tab'){state.output+='  ';}
+    else if(ev.key.length===1){state.output+=ev.key;}
+    else if(ev.byte!=null && ev.byte>=32 && ev.byte<=126){state.output+=String.fromCharCode(ev.byte);}
+    state.output=state.output.slice(-320);
+  }
+  function handleKeyboardEvent(e){
+    if(!state.capture||e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;
+    const target=e.target;
+    if(target && (target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
+    if(target && target.tagName==='BUTTON' && (e.key===' '||e.key==='Enter'))return;
+    let key=null;
+    if(e.key.length===1)key=e.key;
+    else if(e.key==='Backspace'||e.key==='Enter')key=e.key;
+    else return;
+    if(e.key===' '||e.key==='Backspace')e.preventDefault();
+    enqueueKey(key,e.code||'Unidentified',e.repeat,false);
+  }
+  window.addEventListener('keydown',handleKeyboardEvent,true);
+  window.addEventListener('pointerdown',(e)=>{
+    if(!e.target.closest('button, input, select, textarea, a'))document.body.focus();
+  });
+
+  function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(state.lastToast);state.lastToast=setTimeout(()=>t.classList.remove('show'),2100);}
+  function setCapture(on){state.capture=on;$('captureStatus').textContent=on?'Keyboard capture ON':'Keyboard capture paused';$('captureStateMini').textContent=on?'ACTIVE':'PAUSED';$('captureToggle').textContent=on?'Pause capture':'Resume capture';$('captureDot').classList.toggle('warn',!on);$('inputDot').classList.toggle('warn',!on);}
+  $('captureToggle').addEventListener('click',()=>setCapture(!state.capture));
+  $('clearOutput').addEventListener('click',()=>{state.output='';$('outputText').textContent='(empty buffer)';drawScreen('','BUFFER CLEARED');});
+  $('demoHello').addEventListener('click',()=>[...'HELLO'].forEach((k,i)=>setTimeout(()=>enqueueKey(k,`Demo-${k}`,false,true),i*85)));
+  $('demoNumber').addEventListener('click',()=>[...'123'].forEach((k,i)=>setTimeout(()=>enqueueKey(k,`Demo-${k}`,false,true),i*85)));
+
+  // Beginner / advanced modes.
+  function setMode(advanced){state.advanced=advanced;document.body.classList.toggle('advanced',advanced);$('modeToggle').textContent=advanced?'Advanced mode':'Beginner mode';$('beginnerMode').classList.toggle('active',!advanced);$('advancedMode').classList.toggle('active',advanced);$('modeLabel').textContent=advanced?'Advanced':'Simple';$('modeDescription').textContent=advanced?'Binary, hexadecimal, teaching registers and a five-stage CPU trace are visible.':'Plain-language explanations and the main signal path.';}
+  $('modeToggle').addEventListener('click',()=>setMode(!state.advanced));$('beginnerMode').addEventListener('click',()=>setMode(false));$('advancedMode').addEventListener('click',()=>setMode(true));
+
+  // ---------- VIEW / EXPLODED CONTROLS ----------
+  function setView(view){state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+    if(view==='overview'){state.exploded=0;cam.theta=.12;cam.phi=1.05;cam.radius=27;cam.target.set(0,3.2,0);$('sceneCaption').textContent='A laptop, opened for learning';}
+    if(view==='exploded'){state.exploded=1;cam.theta=.25;cam.phi=.88;cam.radius=30;cam.target.set(0,2.1,-.4);$('sceneCaption').textContent='Exploded view — internal components separated';}
+    if(view==='signal'){state.exploded=.45;cam.theta=-.18;cam.phi=.94;cam.radius=30;cam.target.set(0,3.0,-.3);$('sceneCaption').textContent='Follow the animated input-to-display path';}
+  }
+  document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+  $('resetView').addEventListener('click',()=>setView('overview'));
+  $('slowMotionBtn').addEventListener('click',()=>{state.slowMotion=!state.slowMotion;$('slowMotionBtn').textContent=state.slowMotion?'Slow mode: ON':'Slow mode: OFF';$('slowMotionBtn').classList.toggle('active',state.slowMotion);});
+
+  // ---------- 3D INTERACTION ----------
+  renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;lastPointer={x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture?.(e.pointerId);});
+  renderer.domElement.addEventListener('pointerup',e=>{dragging=false;});
+  renderer.domElement.addEventListener('pointercancel',()=>dragging=false);
+  renderer.domElement.addEventListener('pointermove',e=>{
+    if(!dragging)return;const dx=e.clientX-lastPointer.x,dy=e.clientY-lastPointer.y;lastPointer={x:e.clientX,y:e.clientY};cam.theta-=dx*.006;cam.phi=clamp(cam.phi+dy*.005,.35,1.48);
+  });
+  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();cam.radius=clamp(cam.radius+e.deltaY*.025,12,48);},{passive:false});
+  renderer.domElement.addEventListener('click',e=>{
+    if(dragging)return;const rect=renderer.domElement.getBoundingClientRect();pointer.x=((e.clientX-rect.left)/rect.width)*2-1;pointer.y=-((e.clientY-rect.top)/rect.height)*2+1;raycaster.setFromCamera(pointer,camera);
+    const hits=raycaster.intersectObjects(clickTargets,false);if(!hits.length)return;const obj=hits[0].object;
+    if(obj.userData.keyChar){const k=obj.userData.keyChar;if(k==='SPACE')enqueueKey(' ','Space');else if(k==='↵')enqueueKey('Enter','Enter');else if(k==='SHIFT'||k==='CTRL'||k==='ALT'||k==='FN'||k==='←'||k==='→'||k==='↑'||k==='↓')toast(`${k} is a modifier/navigation key in this teaching model.`);else if(k==='⌫')enqueueKey('Backspace','Backspace');else enqueueKey(k==='.'?'.':k==='/'?'/':k,`Virtual-${k}`);return;}
+    const id=obj.userData.partId;if(id)selectPart(id,true);
+  });
+
+  // ---------- RENDER LOOP ----------
+  const clock=new THREE.Clock();let lastActiveTime=0;
+  function resize(){const w=sceneHost.clientWidth,h=sceneHost.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);}
+  const resizeObserver=new ResizeObserver(resize);resizeObserver.observe(sceneHost);resize();
+  function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
+    const nextX=cam.target.x+Math.sin(cam.theta)*Math.cos(cam.phi)*cam.radius;
+    const nextZ=cam.target.z+Math.cos(cam.theta)*Math.cos(cam.phi)*cam.radius;
+    const nextY=cam.target.y+Math.sin(cam.phi)*cam.radius;
+    camera.position.lerp(new THREE.Vector3(nextX,nextY,nextZ),.08);camera.lookAt(cam.target);
+    // Exploded separation: internal modules rise, making the motherboard anatomy easier to see.
+    Object.entries(partGroups).forEach(([id,g])=>{const target=g.userData.baseY+state.exploded*g.userData.lift;g.position.y+=(target-g.position.y)*.12;});
+    fanRotors.forEach(f=>f.mesh.rotation.y+=dt*2.8*f.dir);
+    if(state.activeStep>=0&&signalCurves[state.activeStep]){
+      const t=state.currentFlowProgress;const pos=signalCurves[state.activeStep].getPoint(clamp(t,0,1));activePulse.core.position.copy(pos);activePulse.glow.position.copy(pos);activePulse.core.scale.setScalar(1+Math.sin(performance.now()*.012)*.13);activePulse.glow.scale.setScalar(1+Math.sin(performance.now()*.01)*.2);
+    }
+    // Highlight the physical systems participating in the current step.
+    const activeId=state.activeStep>=0?FLOW[state.activeStep].from:null;
+    Object.entries(partMeshes).forEach(([id,meshes])=>meshes.forEach(m=>{if(m.material&&m.material.emissive){m.material.emissive.setHex(id===activeId?0x123c4a:0x000000);}}));
+    tags.forEach(t=>{const v=t.pos.clone().project(camera);const visible=v.z<1&&v.z>-1;t.sprite.visible=visible;});
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  // Modal and initial camera focus.
+  $('learnBtn').addEventListener('click',()=>$('learnModal').classList.add('open'));
+  $('closeLearn').addEventListener('click',()=>$('learnModal').classList.remove('open'));
+  $('learnModal').addEventListener('click',e=>{if(e.target===$('learnModal'))$('learnModal').classList.remove('open');});
+  flowNodes.forEach(node=>node.addEventListener('click',()=>{const step=Number(node.dataset.step);selectPart(FLOW[step].from,true);toast(`Stage ${step+1}: ${FLOW[step].kind}`);}));
+
+  setCapture(true);setMode(false);setView('overview');updateFlowUI(-1);selectPart('cpu');
+  $('outputText').textContent='(empty buffer)';
+  $('queueStatus').textContent='Queue: 0';
+  document.body.focus();
+  window.addEventListener('beforeunload',()=>{resizeObserver.disconnect();renderer.dispose();});
+})();
+</script>
+</body>
+</html>
